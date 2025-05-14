@@ -540,7 +540,7 @@ function drawGame() {
 
 		// Check for collision with player
 		if (checkCollision(addChaiArray[i], p)) {
-			fireRate = 100;
+			fireRate = 300;
 			shootingPowerupTimer = millis();
 			removeAddChaiIndex = i;
 			console.log(i);
