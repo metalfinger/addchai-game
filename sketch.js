@@ -563,9 +563,7 @@ function drawGame() {
 	}
 
 	// Draw shooting power-up timer indicator if active
-	// if (shootingPowerupTimer > 0) {
-	if (1) {
-		// just to check te UI
+	if (shootingPowerupTimer > 0) {
 		let indicatorX = POWERUP_INDICATOR_X;
 		let indicatorY = POWERUP_INDICATOR_Y;
 		let indicatorSize = POWERUP_INDICATOR_SIZE;
