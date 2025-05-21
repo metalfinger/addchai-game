@@ -8,9 +8,12 @@ body {
 	overflow: hidden;
 	background-color: #000;
 	font-family: "VT323", monospace;
+	display: flex;
+	justify-content: center;
+	align-items: center;
 }
 
-body {
+main {
 	display: flex;
 	justify-content: center;
 	align-items: center;
