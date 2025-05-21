@@ -11,6 +11,10 @@ let addChaiArray = [];
 let lastFired = 0;
 let fireRate = 1000; // cooldown time in milliseconds
 
+// Graphics buffers for pre-scaled parallax layers
+let gAddChai1, gAddChai2, gAddChai3, gAddChai4;
+let parallaxBuffersInitialized = false; // Flag to track buffer initialization
+
 let iMonster;
 let iPlayer;
 let iFlame;
@@ -106,7 +110,7 @@ let ARROW_ANIMATION_SPEED = 0.2; // speed of return animation
 
 // Parallax offset values
 let PARALLAX_OFFSET_UP = -95;
-let PARALLAX_OFFSET_DOWN = 0;
+let PARALLAX_OFFSET_DOWN = -unit;
 
 // Layer positions
 let layer1Y = 0;
@@ -262,6 +266,13 @@ function setup() {
 		} catch (error) {
 			console.log("Error initializing music:", error);
 		}
+	}
+	// updateParallaxBuffers(); // Call is now conditional / returns a status
+	parallaxBuffersInitialized = updateParallaxBuffers();
+	if (!parallaxBuffersInitialized) {
+		console.warn(
+			"Parallax buffers not initialized during setup. Will attempt in draw loop."
+		);
 	}
 }
 
@@ -614,11 +625,48 @@ function windowResized() {
 	HEALTH_HEART_Y = unit * 0.5;
 	HEALTH_HEART_SIZE = unit * 0.5;
 	HEALTH_HEART_SPACING = HEALTH_HEART_SIZE * 1.2;
+
+	updateParallaxBuffers(); // Update parallax buffers on resize
 }
 
 function drawGame() {
 	noStroke(); // Prevent outlines
-	background(0);
+
+	// Attempt to initialize parallax buffers if not already done
+	if (!parallaxBuffersInitialized) {
+		parallaxBuffersInitialized = updateParallaxBuffers();
+		if (parallaxBuffersInitialized) {
+			console.log("Parallax buffers successfully initialized from drawGame.");
+		} else {
+			// Optional: could log here that it's still waiting, but might be spammy
+		}
+	}
+
+	background(0); // Draw black background, parallax layers will draw on top if ready
+
+	// --- Draw Static Background and Clouds (like screen2 & screen3) ---
+	if (iScreenBack) {
+		// Calculate dimensions to maintain aspect ratio for iScreenBack
+		let imgAspectRatio = iScreenBack.width / iScreenBack.height;
+		let canvasAspectRatio = width / height;
+		let drawWidth, drawHeight, x, y;
+
+		if (imgAspectRatio < canvasAspectRatio) {
+			drawWidth = width;
+			drawHeight = width / imgAspectRatio;
+			x = 0;
+			y = (height - drawHeight) / 2;
+		} else {
+			drawHeight = height;
+			drawWidth = height * imgAspectRatio;
+			x = (width - drawWidth) / 2;
+			y = 0;
+		}
+		image(iScreenBack, x, y, drawWidth, drawHeight);
+	}
+
+	drawClouds(); // Draw animated clouds on top of iScreenBack
+	// --- End Static Background and Clouds ---
 
 	// Calculate parallax effect based on player position
 	let normalizedPlayerY = map(p.y, 0, height, 0, 1);
@@ -632,25 +680,27 @@ function drawGame() {
 		lerp(PARALLAX_OFFSET_UP, PARALLAX_OFFSET_DOWN, normalizedPlayerY) * 0.75;
 	layer1Y = lerp(PARALLAX_OFFSET_UP, PARALLAX_OFFSET_DOWN, normalizedPlayerY);
 
-	// Calculate height to maintain aspect ratio
-	let imgHeight1 = (width * iAddChai1.height) / iAddChai1.width;
-	let imgHeight2 = (width * iAddChai2.height) / iAddChai2.width;
-	let imgHeight3 = (width * iAddChai3.height) / iAddChai3.width;
-	let imgHeight4 = (width * iAddChai4.height) / iAddChai4.width;
+	// Calculate height to maintain aspect ratio - No longer needed here for parallax
+	// let imgHeight1 = (width * iAddChai1.height) / iAddChai1.width;
+	// let imgHeight2 = (width * iAddChai2.height) / iAddChai2.width;
+	// let imgHeight3 = (width * iAddChai3.height) / iAddChai3.width;
+	// let imgHeight4 = (width * iAddChai4.height) / iAddChai4.width;
 
 	// Set blend mode for darker effect
 	blendMode(BLEND);
 
 	// Draw layers from back to front with maintained aspect ratio and dark tint
-	tint(200); // Increased from 80 to 200 for better visibility
-	image(iAddChai4, 0, layer4Y, width, imgHeight4);
-	image(iAddChai3, 0, layer3Y, width, imgHeight3);
-	image(iAddChai2, 0, layer2Y, width, imgHeight2);
-	image(iAddChai1, 0, layer1Y, width, imgHeight1);
+	// tint(200); // Tint is now applied to the buffers directly
+
+	// Draw pre-scaled and pre-tinted buffers
+	if (gAddChai4) image(gAddChai4, 0, layer4Y);
+	if (gAddChai3) image(gAddChai3, 0, layer3Y);
+	if (gAddChai2) image(gAddChai2, 0, layer2Y);
+	if (gAddChai1) image(gAddChai1, 0, layer1Y);
 
 	// Reset blend mode and tint for other elements
-	blendMode(BLEND);
-	noTint();
+	blendMode(BLEND); // Ensure blend mode is still as expected or reset if necessary
+	noTint(); // Crucial to reset tint for other game elements
 
 	//Move the Player
 
@@ -1027,10 +1077,14 @@ function checkCollision(entity1, entity2) {
 		}
 		return e.size || 0;
 	};
-	let d = dist(entity1.x, entity1.y, entity2.x, entity2.y);
 	let r1 = getSpriteDiameter(entity1) / 2;
 	let r2 = getSpriteDiameter(entity2) / 2;
-	return d < r1 + r2;
+
+	let dx = entity1.x - entity2.x;
+	let dy = entity1.y - entity2.y;
+	let squaredDistance = dx * dx + dy * dy;
+	// Compare squared distance with squared sum of radii
+	return squaredDistance < (r1 + r2) * (r1 + r2);
 }
 
 function fireWeapon() {
@@ -1423,7 +1477,7 @@ class Weapon {
 		this.size = this.hh; // Corrected: was this.ww, now consistent with drawThis logic for collision
 		this.collisionDiameter = this.ww * 2; // Added collisionDiameter
 		this.trail = []; // Array to store trail positions
-		this.trailLength = unit / 9; // Increased from 5 to 15 for longer trail
+		this.trailLength = unit / 18; // Reduced from unit / 9 for optimization
 		this.trailSpacing = unit / 2; // Reduced spacing for smoother trail
 	}
 
@@ -1503,16 +1557,25 @@ class Blast {
 	constructor(x, y, size) {
 		this.x = x;
 		this.y = y;
-		this.size = size;
-		this.life = 20;
+		this.size = size; // This will be the maximum diameter of the explosion
+		this.life = 20; // Duration of the blast
 		this.currentLife = this.life;
-		this.collisionDiameter = this.size; // Added collisionDiameter
+		this.collisionDiameter = this.size; // Added collisionDiameter, might not be relevant if blast doesn't collide
 	}
 
 	drawThis() {
-		textAlign(CENTER, CENTER);
-		textSize(this.size * (this.currentLife / this.life));
-		text("💥", this.x, this.y);
+		// Calculate progress (0 = new, 1 = expired)
+		// Ensure currentLife doesn't go below 0 for calculations
+		let actualCurrentLife = Math.max(0, this.currentLife);
+		let progress = (this.life - actualCurrentLife) / this.life;
+
+		// Explosion expands and then fades
+		let currentDiameter = this.size * progress;
+		let alpha = 255 * (1 - progress); // Fades out as it expands
+
+		noStroke();
+		fill(255, 120, 0, alpha); // Fiery orange color for the explosion
+		ellipse(this.x, this.y, currentDiameter, currentDiameter);
 
 		this.currentLife--;
 	}
@@ -1767,4 +1830,83 @@ function updateCharacterSelectLayout() {
 	}
 	SELECT_BUTTON_X = (width - SELECT_BTN_IMG_WIDTH) / 2;
 	SELECT_BUTTON_Y = height - unit * 1.3 - SELECT_BTN_IMG_HEIGHT / 2; // Position above bottom edge
+}
+
+// New function to create/update pre-scaled parallax background buffers
+function updateParallaxBuffers() {
+	if (
+		!iAddChai1 ||
+		!iAddChai2 ||
+		!iAddChai3 ||
+		!iAddChai4 ||
+		iAddChai1.width === 0 ||
+		iAddChai2.width === 0 ||
+		iAddChai3.width === 0 ||
+		iAddChai4.width === 0
+	) {
+		// console.warn("Parallax images not fully loaded, skipping buffer update.");
+		return false; // Indicate failure
+	}
+
+	// Buffer for iAddChai1
+	let imgHeight1 = (width * iAddChai1.height) / iAddChai1.width;
+	if (
+		gAddChai1 &&
+		(gAddChai1.width !== width || gAddChai1.height !== imgHeight1)
+	) {
+		gAddChai1.remove();
+		gAddChai1 = null;
+	}
+	if (!gAddChai1) {
+		gAddChai1 = createGraphics(width, imgHeight1);
+		gAddChai1.tint(200);
+		gAddChai1.image(iAddChai1, 0, 0, gAddChai1.width, gAddChai1.height);
+		// gAddChai1.noTint(); // Not strictly needed here as tint applies to draws *on* this buffer
+	}
+
+	// Buffer for iAddChai2
+	let imgHeight2 = (width * iAddChai2.height) / iAddChai2.width;
+	if (
+		gAddChai2 &&
+		(gAddChai2.width !== width || gAddChai2.height !== imgHeight2)
+	) {
+		gAddChai2.remove();
+		gAddChai2 = null;
+	}
+	if (!gAddChai2) {
+		gAddChai2 = createGraphics(width, imgHeight2);
+		gAddChai2.tint(200);
+		gAddChai2.image(iAddChai2, 0, 0, gAddChai2.width, gAddChai2.height);
+	}
+
+	// Buffer for iAddChai3
+	let imgHeight3 = (width * iAddChai3.height) / iAddChai3.width;
+	if (
+		gAddChai3 &&
+		(gAddChai3.width !== width || gAddChai3.height !== imgHeight3)
+	) {
+		gAddChai3.remove();
+		gAddChai3 = null;
+	}
+	if (!gAddChai3) {
+		gAddChai3 = createGraphics(width, imgHeight3);
+		gAddChai3.tint(200);
+		gAddChai3.image(iAddChai3, 0, 0, gAddChai3.width, gAddChai3.height);
+	}
+
+	// Buffer for iAddChai4
+	let imgHeight4 = (width * iAddChai4.height) / iAddChai4.width;
+	if (
+		gAddChai4 &&
+		(gAddChai4.width !== width || gAddChai4.height !== imgHeight4)
+	) {
+		gAddChai4.remove();
+		gAddChai4 = null;
+	}
+	if (!gAddChai4) {
+		gAddChai4 = createGraphics(width, imgHeight4);
+		gAddChai4.tint(200);
+		gAddChai4.image(iAddChai4, 0, 0, gAddChai4.width, gAddChai4.height);
+	}
+	return true; // Indicate success
 }
