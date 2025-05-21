@@ -405,6 +405,15 @@ function drawCharacterSelect() {
 		textAlign(CENTER);
 		text("Loading character sheet...", width / 2, height / 2);
 	}
+
+	// Add text at the bottom
+	textSize(unit * 0.5);
+	stroke(255); // White outline
+	strokeWeight(unit * 0.05); // Adjust outline thickness as needed
+	fill(255, 0, 0); // Red color
+	textAlign(CENTER, BOTTOM);
+	text("Press Enter to select the player", width / 2, height - unit * 0.2);
+	noStroke(); // Reset stroke so it doesn't affect other elements
 }
 
 function drawNavigationArrows() {
