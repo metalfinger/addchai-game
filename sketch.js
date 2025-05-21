@@ -26,10 +26,26 @@ let healthBarBelow;
 let iAddChaiImg;
 let iReloadIcon;
 let iBackPlayer;
+let iScreen2;
+let iScreen3;
+let iScreenBack;
+let iScreenCloud;
+let clickSound; // Add variable for click sound
+let bgMusic1; // Character select music
+let bgMusic2; // Game music
+let playerShootSound;
+let monsterShootSound;
+let boomSound;
+
+// New images for character select screen
+let iInstruction;
+let iLeftArrow;
+let iSelectPlayerBtn;
 
 // Game state
-let currentScreen = "characterSelect"; // 'characterSelect', 'game', or 'gameOver'
+let currentScreen = "characterSelect"; // 'characterSelect', 'screen2', 'screen3', 'game', or 'gameOver'
 let currentCharacter = 0;
+let gameResult = ""; // "victory" or "defeat" to track the game result
 const characterNames = [
 	"Warrior",
 	"Mage",
@@ -43,6 +59,50 @@ const characterNames = [
 	"Druid",
 	"Warlock",
 ];
+
+// Screen transition variables
+let isTransitioning = false;
+let fadeAlpha = 0;
+let FADE_SPEED = 0.05;
+let targetScreen = "";
+
+// Debug mode for collision boxes
+let debugMode = false;
+
+// Audio level manager
+let audioLevels = {
+	characterSelect: 0.5, // 50% volume for character select
+	game: 0.5, // 50% volume for game
+	fadeSpeed: 0.02, // Speed of volume fade
+};
+
+let lastVolumeUpdate = 0;
+const VOLUME_UPDATE_INTERVAL = 50; // Update volume every 50ms
+
+// Navigation and button positions
+let LEFT_ARROW_X;
+let LEFT_ARROW_Y;
+let RIGHT_ARROW_X;
+let RIGHT_ARROW_Y;
+let ARROW_SIZE;
+let SELECT_BUTTON_X;
+let SELECT_BUTTON_Y;
+let SELECT_BUTTON_WIDTH;
+let SELECT_BUTTON_HEIGHT;
+
+// New image dimensions (will be set in setup/updateCharacterSelectLayout)
+let INSTRUCTION_IMG_X,
+	INSTRUCTION_IMG_Y,
+	INSTRUCTION_IMG_WIDTH,
+	INSTRUCTION_IMG_HEIGHT;
+let ARROW_IMG_WIDTH, ARROW_IMG_HEIGHT; // Arrow positions (LEFT_ARROW_X, etc.) will be reused
+let SELECT_BTN_IMG_WIDTH, SELECT_BTN_IMG_HEIGHT; // Select button position (SELECT_BUTTON_X, etc.) will be reused
+
+// Arrow click animation variables
+let leftArrowOffset = 0;
+let rightArrowOffset = 0;
+let ARROW_CLICK_OFFSET = 10; // pixels to move when clicked
+let ARROW_ANIMATION_SPEED = 0.2; // speed of return animation
 
 // Parallax offset values
 let PARALLAX_OFFSET_UP = -95;
@@ -64,7 +124,7 @@ let lastGameDuration = 0;
 
 let monsterFireRate = 1000; // Initial monster fire rate in ms
 let monsterLastFired = 0;
-const monsterMinFireRate = 250; // Minimum fire rate for monster
+const monsterMinFireRate = 500; // Minimum fire rate for monster
 
 // Indicator positions and sizes
 let RELOAD_INDICATOR_X; // pixels from right edge
@@ -80,6 +140,10 @@ let HEALTH_HEART_X; // starting x position
 let HEALTH_HEART_Y; // y position
 let HEALTH_HEART_SIZE; // size of each heart
 let HEALTH_HEART_SPACING; // space between hearts
+
+// Cloud animation variables
+let cloudOffset = 0;
+let cloudSpeed = 0.5; // pixels per frame
 
 function preload() {
 	// Preload any assets here if needed
@@ -109,13 +173,46 @@ function preload() {
 	iAddChaiImg = loadImage("asset/addchai.png");
 	iReloadIcon = loadImage("asset/character/reloadicon.png"); // Add reload icon loading
 	iBackPlayer = loadImage("asset/map/back_player.jpg"); // Load background for character selection
+	iScreen2 = loadImage("asset/map/screens/screen2.png"); // Load screen 2
+	iScreen3 = loadImage("asset/map/screens/screen3.png"); // Load screen 3
+	iScreenBack = loadImage("asset/map/screens/screen-back.jpg"); // Load background
+	iScreenCloud = loadImage("asset/map/screens/screen-cloud.png"); // Load cloud layer
+
+	// Load sounds
+	clickSound = loadSound("asset/audio/click.mp3");
+	bgMusic1 = loadSound("asset/audio/bg1.mp3"); // Character select
+	bgMusic2 = loadSound("asset/audio/bg1.mp3"); // Game
+	playerShootSound = loadSound("asset/audio/player-shoot.mp3");
+	monsterShootSound = loadSound("asset/audio/william-shoot.mp3");
+	boomSound = loadSound("asset/audio/boom-general.mp3");
+
+	// Load new UI images for character select
+	iInstruction = loadImage("asset/map/screens/instruction.png");
+	iLeftArrow = loadImage("asset/map/screens/left_arrow.png");
+	iSelectPlayerBtn = loadImage("asset/map/screens/select_player_btn.png");
 }
 
 function setup() {
 	console.log("Setup started");
 	createCanvas(windowWidth, (windowWidth * 9) / 16);
 
+	// Set default font
+	textFont("VT323");
+
 	unit = width / 16;
+
+	// Initialize navigation and button positions - will be refined
+	// ARROW_SIZE = unit * 0.5; // Will be replaced by image dimensions
+	// LEFT_ARROW_X = width / 2 - unit * 3;
+	// LEFT_ARROW_Y = height / 2;
+	// RIGHT_ARROW_X = width / 2 + unit * 3;
+	// RIGHT_ARROW_Y = height / 2;
+	// SELECT_BUTTON_WIDTH = unit * 4.2; // Will be replaced by image dimensions
+	// SELECT_BUTTON_HEIGHT = unit * 0.7; // Will be replaced by image dimensions
+	// SELECT_BUTTON_X = width / 2 - SELECT_BUTTON_WIDTH / 2;
+	// SELECT_BUTTON_Y = height - unit * 1.3;
+
+	updateCharacterSelectLayout(); // New function to set positions and sizes
 
 	// Initialize indicator positions and sizes
 	RELOAD_INDICATOR_X = unit;
@@ -156,15 +253,85 @@ function setup() {
 	lastGameDuration = 0;
 
 	iAddChaiImg = loadImage("asset/addchai.png");
+
+	// Start character select music
+	if (bgMusic1) {
+		try {
+			bgMusic1.setVolume(0.5);
+			bgMusic1.loop();
+		} catch (error) {
+			console.log("Error initializing music:", error);
+		}
+	}
 }
 
 function draw() {
-	if (currentScreen === "characterSelect") {
-		drawCharacterSelect();
-	} else if (currentScreen === "gameOver") {
-		drawGameOver();
+	if (isTransitioning) {
+		handleTransition();
 	} else {
-		drawGame();
+		if (currentScreen === "characterSelect") {
+			drawCharacterSelect();
+			// Ensure only bgMusic1 is playing
+			if (bgMusic2 && bgMusic2.isPlaying()) {
+				bgMusic2.stop();
+			}
+			if (bgMusic1 && !bgMusic1.isPlaying()) {
+				try {
+					bgMusic1.loop();
+				} catch (error) {
+					console.log("Error starting music:", error);
+				}
+			}
+			// Fade in character select music
+			if (bgMusic1 && millis() - lastVolumeUpdate > VOLUME_UPDATE_INTERVAL) {
+				try {
+					let targetVolume = audioLevels.characterSelect;
+					let currentVolume = bgMusic1.getVolume();
+					if (currentVolume < targetVolume) {
+						bgMusic1.setVolume(
+							Math.min(targetVolume, currentVolume + audioLevels.fadeSpeed)
+						);
+						lastVolumeUpdate = millis();
+					}
+				} catch (error) {
+					console.log("Error updating volume:", error);
+				}
+			}
+		} else if (currentScreen === "screen2") {
+			drawScreen2();
+		} else if (currentScreen === "screen3") {
+			drawScreen3();
+		} else if (currentScreen === "gameOver") {
+			drawGameOver();
+		} else {
+			drawGame();
+			// Ensure only bgMusic2 is playing
+			if (bgMusic1 && bgMusic1.isPlaying()) {
+				bgMusic1.stop();
+			}
+			if (bgMusic2 && !bgMusic2.isPlaying()) {
+				try {
+					bgMusic2.loop();
+				} catch (error) {
+					console.log("Error starting music:", error);
+				}
+			}
+			// Fade in game music
+			if (bgMusic2 && millis() - lastVolumeUpdate > VOLUME_UPDATE_INTERVAL) {
+				try {
+					let targetVolume = audioLevels.game;
+					let currentVolume = bgMusic2.getVolume();
+					if (currentVolume < targetVolume) {
+						bgMusic2.setVolume(
+							Math.min(targetVolume, currentVolume + audioLevels.fadeSpeed)
+						);
+						lastVolumeUpdate = millis();
+					}
+				} catch (error) {
+					console.log("Error updating volume:", error);
+				}
+			}
+		}
 	}
 }
 
@@ -172,9 +339,37 @@ function drawCharacterSelect() {
 	noStroke(); // Prevent outlines
 	// Draw the background image if loaded, else fallback to black
 	if (iBackPlayer) {
-		image(iBackPlayer, 0, 0, width, height);
+		let imgAspectRatio = iBackPlayer.width / iBackPlayer.height;
+		let canvasAspectRatio = width / height;
+		let drawWidth, drawHeight, x, y;
+
+		if (imgAspectRatio < canvasAspectRatio) {
+			// Image is wider than canvas, fit by width
+			drawWidth = width;
+			drawHeight = width / imgAspectRatio;
+			x = 0;
+			y = (height - drawHeight) / 2;
+		} else {
+			// Image is taller than canvas, fit by height
+			drawHeight = height;
+			drawWidth = height * imgAspectRatio;
+			x = (width - drawWidth) / 2;
+			y = 0;
+		}
+		image(iBackPlayer, x, y, drawWidth, drawHeight);
 	} else {
 		background(0);
+	}
+
+	// Draw instruction image
+	if (iInstruction) {
+		image(
+			iInstruction,
+			INSTRUCTION_IMG_X,
+			INSTRUCTION_IMG_Y,
+			INSTRUCTION_IMG_WIDTH,
+			INSTRUCTION_IMG_HEIGHT
+		);
 	}
 
 	if (characterSheet) {
@@ -183,10 +378,10 @@ function drawCharacterSelect() {
 		let charHeight = characterSheet.height;
 
 		// Calculate the position to center the character with unit-based size
-		let displayWidth = unit * 3; // 4 units wide
+		let displayWidth = unit * 4; // 4 units wide
 		let displayHeight = (displayWidth * charHeight) / charWidth;
 		let x = (width - displayWidth) / 2;
-		let y = (height - displayHeight) / 2;
+		let y = (height - displayHeight) / 2 + unit * 0.5;
 
 		// Draw the current character from the sprite sheet
 		image(
@@ -213,97 +408,142 @@ function drawCharacterSelect() {
 }
 
 function drawNavigationArrows() {
-	// Left arrow
-	fill(255);
-	let arrowSize = unit * 0.5;
-	triangle(
-		unit * 2,
-		height / 2,
-		unit * 2.5,
-		height / 2 - arrowSize,
-		unit * 2.5,
-		height / 2 + arrowSize
-	);
+	//fill FF2D2D
+	// fill(255, 45, 45); // No longer needed for image-based arrows
 
-	// Right arrow
-	triangle(
-		width - unit * 2,
-		height / 2,
-		width - unit * 2.5,
-		height / 2 - arrowSize,
-		width - unit * 2.5,
-		height / 2 + arrowSize
-	);
+	// Left arrow image
+	if (iLeftArrow) {
+		image(
+			iLeftArrow,
+			LEFT_ARROW_X + leftArrowOffset - ARROW_IMG_WIDTH / 2,
+			LEFT_ARROW_Y - ARROW_IMG_HEIGHT / 2,
+			ARROW_IMG_WIDTH,
+			ARROW_IMG_HEIGHT
+		);
+	}
+	// triangle(
+	// 	LEFT_ARROW_X + leftArrowOffset,
+	// 	LEFT_ARROW_Y,
+	// 	LEFT_ARROW_X + unit * 0.5 + leftArrowOffset,
+	// 	LEFT_ARROW_Y - ARROW_SIZE,
+	// 	LEFT_ARROW_X + unit * 0.5 + leftArrowOffset,
+	// 	LEFT_ARROW_Y + ARROW_SIZE
+	// );
 
-	// Draw select button
-	fill(0, 255, 0);
-	let buttonWidth = unit * 4;
-	let buttonHeight = unit;
-	rect(
-		width / 2 - buttonWidth / 2,
-		height - unit * 2,
-		buttonWidth,
-		buttonHeight
-	);
-	fill(0);
-	textSize(unit * 0.4);
-	textAlign(CENTER, CENTER);
-	text("Select Character", width / 2, height - unit * 1.5);
+	// Right arrow image (rotated left arrow)
+	if (iLeftArrow) {
+		push();
+		translate(RIGHT_ARROW_X + rightArrowOffset, RIGHT_ARROW_Y);
+		rotate(PI); // Rotate 180 degrees
+		image(
+			iLeftArrow,
+			-ARROW_IMG_WIDTH / 2,
+			-ARROW_IMG_HEIGHT / 2,
+			ARROW_IMG_WIDTH,
+			ARROW_IMG_HEIGHT
+		);
+		pop();
+	}
+	// triangle(
+	// 	RIGHT_ARROW_X + rightArrowOffset,
+	// 	RIGHT_ARROW_Y,
+	// 	RIGHT_ARROW_X - unit * 0.5 + rightArrowOffset,
+	// 	RIGHT_ARROW_Y - ARROW_SIZE,
+	// 	RIGHT_ARROW_X - unit * 0.5 + rightArrowOffset,
+	// 	RIGHT_ARROW_Y + ARROW_SIZE
+	// );
+
+	// Draw select button image
+	if (iSelectPlayerBtn) {
+		image(
+			iSelectPlayerBtn,
+			SELECT_BUTTON_X,
+			SELECT_BUTTON_Y,
+			SELECT_BTN_IMG_WIDTH,
+			SELECT_BTN_IMG_HEIGHT
+		);
+	}
+	// rect(
+	// 	SELECT_BUTTON_X,
+	// 	SELECT_BUTTON_Y,
+	// 	SELECT_BUTTON_WIDTH,
+	// 	SELECT_BUTTON_HEIGHT
+	// );
+	// fill(0);
+	// textSize(unit * 0.6);
+	// textAlign(CENTER, CENTER);
+	// text("Select Character", width / 2, height - unit * 1);
+
+	// Animate arrow offsets back to zero
+	leftArrowOffset = lerp(leftArrowOffset, 0, ARROW_ANIMATION_SPEED);
+	rightArrowOffset = lerp(rightArrowOffset, 0, ARROW_ANIMATION_SPEED);
 }
 
 function mousePressed() {
-	if (currentScreen === "characterSelect") {
-		let arrowSize = unit * 0.5;
+	if (currentScreen === "characterSelect" && !isTransitioning) {
 		// Check if left arrow was clicked
 		if (
-			mouseX > unit * 2 &&
-			mouseX < unit * 2.5 &&
-			mouseY > height / 2 - arrowSize &&
-			mouseY < height / 2 + arrowSize
+			iLeftArrow && // Ensure image is loaded
+			mouseX > LEFT_ARROW_X - ARROW_IMG_WIDTH / 2 &&
+			mouseX < LEFT_ARROW_X + ARROW_IMG_WIDTH / 2 &&
+			mouseY > LEFT_ARROW_Y - ARROW_IMG_HEIGHT / 2 &&
+			mouseY < LEFT_ARROW_Y + ARROW_IMG_HEIGHT / 2
 		) {
 			currentCharacter = (currentCharacter - 1 + 11) % 11;
+			leftArrowOffset = -ARROW_CLICK_OFFSET;
+			clickSound.play();
 		}
 
 		// Check if right arrow was clicked
 		if (
-			mouseX > width - unit * 2.5 &&
-			mouseX < width - unit * 2 &&
-			mouseY > height / 2 - arrowSize &&
-			mouseY < height / 2 + arrowSize
+			iLeftArrow && // Ensure image is loaded (used for right arrow too)
+			mouseX > RIGHT_ARROW_X - ARROW_IMG_WIDTH / 2 &&
+			mouseX < RIGHT_ARROW_X + ARROW_IMG_WIDTH / 2 &&
+			mouseY > RIGHT_ARROW_Y - ARROW_IMG_HEIGHT / 2 &&
+			mouseY < RIGHT_ARROW_Y + ARROW_IMG_HEIGHT / 2
 		) {
 			currentCharacter = (currentCharacter + 1) % 11;
+			rightArrowOffset = ARROW_CLICK_OFFSET;
+			clickSound.play();
 		}
 
 		// Check if select button was clicked
-		let buttonWidth = unit * 4;
-		let buttonHeight = unit;
 		if (
-			mouseX > width / 2 - buttonWidth / 2 &&
-			mouseX < width / 2 + buttonWidth / 2 &&
-			mouseY > height - unit * 2 &&
-			mouseY < height - unit
+			iSelectPlayerBtn && // Ensure image is loaded
+			mouseX > SELECT_BUTTON_X &&
+			mouseX < SELECT_BUTTON_X + SELECT_BTN_IMG_WIDTH &&
+			mouseY > SELECT_BUTTON_Y &&
+			mouseY < SELECT_BUTTON_Y + SELECT_BTN_IMG_HEIGHT
 		) {
 			p.characterIndex = currentCharacter;
-			currentScreen = "game";
+			startTransition("screen2");
 		}
 	}
 }
 
 function keyPressed() {
-	if (currentScreen === "characterSelect") {
+	if (currentScreen === "characterSelect" && !isTransitioning) {
 		if (keyCode === LEFT_ARROW) {
 			currentCharacter = (currentCharacter - 1 + 11) % 11;
+			leftArrowOffset = -ARROW_CLICK_OFFSET;
+			clickSound.play();
 		}
 		if (keyCode === RIGHT_ARROW) {
 			currentCharacter = (currentCharacter + 1) % 11;
+			rightArrowOffset = ARROW_CLICK_OFFSET;
+			clickSound.play();
 		}
 		if (keyCode === ENTER) {
 			p.characterIndex = currentCharacter;
-			currentScreen = "game";
+			startTransition("screen2");
 		}
-	} else if (currentScreen === "gameOver") {
+	} else if (currentScreen === "screen2" && !isTransitioning) {
+		startTransition("screen3");
+	} else if (currentScreen === "screen3" && !isTransitioning) {
+		startTransition("game");
+	} else if (currentScreen === "gameOver" && !isTransitioning) {
 		if (keyCode === ENTER) {
-			// Reset game state
+			// Reset core game play elements for a new game
 			p.health = 3;
 			m.health = 10;
 			mFlameArray = [];
@@ -312,16 +552,24 @@ function keyPressed() {
 			addChaiArray = [];
 			fireRate = defaultFireRate;
 			shootingPowerupTimer = 0;
-			currentScreen = "characterSelect";
-			gameStartTime = millis();
-			gameEndTime = 0;
-			lastGameDuration = 0;
+
+			// gameResult, gameStartTime, gameEndTime, lastGameDuration are NOT reset here.
+			// They will be handled by the transition to the new game screen.
+
+			startTransition("game"); // Transition will fade out the gameOver screen content
 		}
-	} else {
+	} else if (!isTransitioning) {
 		if (keyCode === 32) {
 			// Space bar
 			fireWeapon();
 		}
+	}
+
+	// Toggle debug mode with 'D' key
+	if (keyCode === 68) {
+		// 68 is the keyCode for 'D'
+		debugMode = !debugMode;
+		console.log("Debug mode: " + (debugMode ? "ON" : "OFF"));
 	}
 }
 
@@ -329,6 +577,19 @@ function windowResized() {
 	resizeCanvas(windowWidth, (windowWidth * 9) / 16);
 
 	unit = width / 16;
+
+	// Update navigation and button positions
+	// ARROW_SIZE = unit * 0.5; // Replaced by image dimensions
+	// LEFT_ARROW_X = width / 2 - unit * 3;
+	// LEFT_ARROW_Y = height / 2;
+	// RIGHT_ARROW_X = width / 2 + unit * 3;
+	// RIGHT_ARROW_Y = height / 2;
+	// SELECT_BUTTON_WIDTH = unit * 4.2; // Replaced by image dimensions
+	// SELECT_BUTTON_HEIGHT = unit * 0.7; // Replaced by image dimensions
+	// SELECT_BUTTON_X = width / 2 - SELECT_BUTTON_WIDTH / 2;
+	// SELECT_BUTTON_Y = height - unit * 1.3;
+
+	updateCharacterSelectLayout(); // Recalculate layout on resize
 
 	// Update indicator positions and sizes
 	RELOAD_INDICATOR_X = unit;
@@ -428,20 +689,28 @@ function drawGame() {
 		let mf = new MonsterFlame(m.x - unit * 2, m.y, random(1, 5));
 		mFlameArray.push(mf);
 		monsterLastFired = millis();
+		if (monsterShootSound) monsterShootSound.play();
 	}
 
 	//add addchai randomly
 	//AddChai
 	if (shootingPowerupTimer === 0 && random(0, 1000) < 4) {
-		let randomYPos = random(unit / 2, height / 2 - unit / 2);
-		let randomXPos = random(unit / 2, width / 4 - unit / 2);
+		// Define safe spawn area based on player movement bounds
+		const marginX = p.ww + unit / 2;
+		const marginY = p.hh + unit / 2;
+		const minX = marginX;
+		const maxX = width / 2 - marginX;
+		const minY = marginY;
+		const maxY = height - marginY;
 
-		if (p.y < height / 2) {
-			randomYPos = randomYPos + height / 2;
-		}
+		let randomYPos = random(minY, maxY);
+		let randomXPos = random(minX, maxX);
 
-		if (p.x < width / 4) {
-			randomXPos = randomXPos + width / 4;
+		// Optionally, avoid spawning too close to the player
+		if (dist(randomXPos, randomYPos, p.x, p.y) < unit * 2) {
+			// If too close, nudge further away
+			randomXPos = constrain(randomXPos + unit * 2, minX, maxX);
+			randomYPos = constrain(randomYPos + unit * 2, minY, maxY);
 		}
 
 		let ac = new AddChai(randomXPos, randomYPos);
@@ -464,6 +733,7 @@ function drawGame() {
 				mFlameArray[i].size
 			);
 			blastArray.push(b);
+			if (boomSound) boomSound.play();
 
 			if (p.health <= 0) {
 				currentScreen = "gameOver";
@@ -492,6 +762,7 @@ function drawGame() {
 			//add blast
 			let b = new Blast(playerWeapons[i].x, playerWeapons[i].y, m.size / 2);
 			blastArray.push(b);
+			if (boomSound) boomSound.play();
 
 			break;
 		}
@@ -509,6 +780,7 @@ function drawGame() {
 					mFlameArray[j].size
 				);
 				blastArray.push(b);
+				if (boomSound) boomSound.play();
 
 				break;
 			}
@@ -718,19 +990,38 @@ function drawGame() {
 	text("Time: " + timeStr, width / 2, unit * 0.1);
 
 	// Check for game over (player or monster health)
-	if (p.health <= 0 || m.health <= 0) {
+	if (m.health <= 0) {
 		if (gameEndTime === 0) {
 			gameEndTime = millis();
 			lastGameDuration = gameEndTime - gameStartTime;
 		}
+		gameResult = "victory";
+		currentScreen = "gameOver";
+	} else if (p.health <= 0) {
+		if (gameEndTime === 0) {
+			gameEndTime = millis();
+			lastGameDuration = gameEndTime - gameStartTime;
+		}
+		gameResult = "defeat";
 		currentScreen = "gameOver";
 	}
 }
 
 function checkCollision(entity1, entity2) {
+	// Use the maximum of width and height for each entity as the collision diameter
+	const getSpriteDiameter = (e) => {
+		if (typeof e.collisionDiameter === "number") {
+			return e.collisionDiameter;
+		}
+		if (e.ww && e.hh) {
+			return Math.max(e.ww, e.hh);
+		}
+		return e.size || 0;
+	};
 	let d = dist(entity1.x, entity1.y, entity2.x, entity2.y);
-	let minDist = (entity1.size + entity2.size) / 2;
-	return d < minDist; // Adjust the collision threshold as needed
+	let r1 = getSpriteDiameter(entity1) / 2;
+	let r2 = getSpriteDiameter(entity2) / 2;
+	return d < r1 + r2;
 }
 
 function fireWeapon() {
@@ -739,6 +1030,7 @@ function fireWeapon() {
 		let w = new Weapon(p.x + unit / 2, p.y);
 		playerWeapons.push(w);
 		lastFired = currentTime; // Update the last fired time
+		if (playerShootSound) playerShootSound.play();
 	}
 }
 
@@ -794,21 +1086,46 @@ function drawGameOver() {
 	noStroke(); // Prevent outlines
 	background(0);
 
-	// Draw win/lose message
+	// Draw background
+	if (iScreenBack) {
+		// Calculate dimensions to maintain aspect ratio
+		let imgAspectRatio = iScreenBack.width / iScreenBack.height;
+		let canvasAspectRatio = width / height;
+		let drawWidth, drawHeight, x, y;
+
+		if (imgAspectRatio < canvasAspectRatio) {
+			drawWidth = width;
+			drawHeight = width / imgAspectRatio;
+			x = 0;
+			y = (height - drawHeight) / 2;
+		} else {
+			drawHeight = height;
+			drawWidth = height * imgAspectRatio;
+			x = (width - drawWidth) / 2;
+			y = 0;
+		}
+
+		image(iScreenBack, x, y, drawWidth, drawHeight);
+	}
+
+	// Draw animated clouds
+	drawClouds();
+
+	// Draw win/lose message with outline
 	textAlign(CENTER, CENTER);
 	textSize(unit * 2);
-	if (m.health <= 0) {
+
+	// Draw text outline
+	stroke(0);
+	strokeWeight(unit * 0.1);
+	if (gameResult === "victory") {
 		fill(0, 255, 0);
 		text("VICTORY!", width / 2, height / 2);
 	} else {
 		fill(255, 0, 0);
 		text("GAME OVER", width / 2, height / 2);
 	}
-
-	// Draw restart instruction
-	textSize(unit * 0.5);
-	fill(255);
-	text("Press ENTER to restart", width / 2, height / 2 + unit);
+	noStroke();
 
 	// Draw time spent
 	if (lastGameDuration > 0) {
@@ -817,8 +1134,232 @@ function drawGameOver() {
 		let displaySeconds = seconds % 60;
 		let timeStr = nf(minutes, 2) + ":" + nf(displaySeconds, 2);
 		textSize(unit * 0.7);
+		// Draw time text outline
+		stroke(0);
+		strokeWeight(unit * 0.05);
 		fill(255, 255, 0);
 		text("Time: " + timeStr, width / 2, height / 2 + unit * 1.7);
+		noStroke();
+	}
+
+	// Draw restart instruction at bottom with outline
+	textSize(unit * 0.5);
+	stroke(0);
+	strokeWeight(unit * 0.05);
+	fill(255);
+	text("Press ENTER to restart", width / 2, height - unit);
+	noStroke();
+}
+
+function handleTransition() {
+	// Draw the current screen first (before transition)
+	if (FADE_SPEED > 0) {
+		// Fading out
+		if (currentScreen === "characterSelect") {
+			drawCharacterSelect();
+		} else if (currentScreen === "screen2") {
+			drawScreen2();
+		} else if (currentScreen === "screen3") {
+			drawScreen3();
+		} else if (currentScreen === "gameOver") {
+			drawGameOver();
+		} else {
+			drawGame();
+		}
+	} else {
+		// Fading in
+		if (targetScreen === "characterSelect") {
+			drawCharacterSelect();
+		} else if (targetScreen === "screen2") {
+			drawScreen2();
+		} else if (targetScreen === "screen3") {
+			drawScreen3();
+		} else if (targetScreen === "gameOver") {
+			drawGameOver();
+		} else {
+			drawGame();
+		}
+	}
+
+	// Draw fade overlay
+	fill(0, fadeAlpha);
+	rect(0, 0, width, height);
+
+	// Fade out
+	if (FADE_SPEED > 0 && fadeAlpha < 255) {
+		fadeAlpha += FADE_SPEED * 255;
+	} else if (FADE_SPEED > 0 && fadeAlpha >= 255) {
+		// Switch screens
+		let screenWeCameFrom = currentScreen; // Capture the screen we are transitioning FROM
+		currentScreen = targetScreen;
+		fadeAlpha = 255;
+
+		// If the new screen is the game screen, prepare for a new game session
+		if (currentScreen === "game") {
+			gameResult = ""; // Reset gameResult for the new game
+			gameStartTime = millis();
+			gameEndTime = 0;
+			lastGameDuration = 0;
+
+			// If we came from character select path, also reset health and arrays
+			if (
+				screenWeCameFrom === "characterSelect" ||
+				screenWeCameFrom === "screen2" ||
+				screenWeCameFrom === "screen3"
+			) {
+				p.health = 3;
+				m.health = 10;
+				mFlameArray = [];
+				playerWeapons = [];
+				blastArray = [];
+				addChaiArray = [];
+				fireRate = defaultFireRate;
+				shootingPowerupTimer = 0;
+			}
+		}
+
+		// Start fading in
+		FADE_SPEED = -FADE_SPEED;
+	} else if (FADE_SPEED < 0 && fadeAlpha > 0) {
+		fadeAlpha += FADE_SPEED * 255;
+	} else if (FADE_SPEED < 0 && fadeAlpha <= 0) {
+		fadeAlpha = 0;
+		FADE_SPEED = Math.abs(FADE_SPEED);
+		isTransitioning = false; // Let the main draw/game loop resume
+	}
+}
+
+function startTransition(newScreen) {
+	if (clickSound) clickSound.play(); // Play click sound on transition start
+	isTransitioning = true;
+	targetScreen = newScreen;
+	fadeAlpha = 0;
+	FADE_SPEED = Math.abs(FADE_SPEED);
+}
+
+// Helper function to draw animated clouds
+function drawClouds() {
+	if (iScreenCloud) {
+		// Calculate cloud dimensions to fit height
+		let cloudHeight = height * 1.3; // Use full height
+		let cloudWidth = (cloudHeight * iScreenCloud.width) / iScreenCloud.height;
+
+		// Draw multiple cloud images to create seamless scrolling
+		let numClouds = ceil(width / cloudWidth) + 1;
+		for (let i = -1; i < numClouds; i++) {
+			let cloudX = i * cloudWidth + cloudOffset;
+			image(iScreenCloud, cloudX, 0, cloudWidth, cloudHeight);
+		}
+
+		// Update cloud offset
+		cloudOffset -= cloudSpeed;
+		if (cloudOffset <= -cloudWidth) {
+			cloudOffset = 0;
+		}
+	}
+}
+
+function drawScreen2() {
+	noStroke();
+	background(0);
+
+	// Draw background
+	if (iScreenBack) {
+		// Calculate dimensions to maintain aspect ratio
+		let imgAspectRatio = iScreenBack.width / iScreenBack.height;
+		let canvasAspectRatio = width / height;
+		let drawWidth, drawHeight, x, y;
+
+		if (imgAspectRatio < canvasAspectRatio) {
+			drawWidth = width;
+			drawHeight = width / imgAspectRatio;
+			x = 0;
+			y = (height - drawHeight) / 2;
+		} else {
+			drawHeight = height;
+			drawWidth = height * imgAspectRatio;
+			x = (width - drawWidth) / 2;
+			y = 0;
+		}
+
+		image(iScreenBack, x, y, drawWidth, drawHeight);
+	}
+
+	// Draw animated clouds
+	drawClouds();
+
+	// Draw screen content
+	if (iScreen2) {
+		// Calculate dimensions to maintain aspect ratio
+		let imgAspectRatio = iScreen2.width / iScreen2.height;
+		let canvasAspectRatio = width / height;
+		let drawWidth, drawHeight, x, y;
+
+		if (imgAspectRatio < canvasAspectRatio) {
+			drawWidth = width;
+			drawHeight = width / imgAspectRatio;
+			x = 0;
+			y = (height - drawHeight) / 2;
+		} else {
+			drawHeight = height;
+			drawWidth = height * imgAspectRatio;
+			x = (width - drawWidth) / 2;
+			y = 0;
+		}
+
+		image(iScreen2, x, y, drawWidth, drawHeight);
+	}
+}
+
+function drawScreen3() {
+	noStroke();
+	background(0);
+
+	// Draw background
+	if (iScreenBack) {
+		// Calculate dimensions to maintain aspect ratio
+		let imgAspectRatio = iScreenBack.width / iScreenBack.height;
+		let canvasAspectRatio = width / height;
+		let drawWidth, drawHeight, x, y;
+
+		if (imgAspectRatio < canvasAspectRatio) {
+			drawWidth = width;
+			drawHeight = width / imgAspectRatio;
+			x = 0;
+			y = (height - drawHeight) / 2;
+		} else {
+			drawHeight = height;
+			drawWidth = height * imgAspectRatio;
+			x = (width - drawWidth) / 2;
+			y = 0;
+		}
+
+		image(iScreenBack, x, y, drawWidth, drawHeight);
+	}
+
+	// Draw animated clouds
+	drawClouds();
+
+	// Draw screen content
+	if (iScreen3) {
+		// Calculate dimensions to maintain aspect ratio
+		let imgAspectRatio = iScreen3.width / iScreen3.height;
+		let canvasAspectRatio = width / height;
+		let drawWidth, drawHeight, x, y;
+
+		if (imgAspectRatio < canvasAspectRatio) {
+			drawWidth = width;
+			drawHeight = width / imgAspectRatio;
+			x = 0;
+			y = (height - drawHeight) / 2;
+		} else {
+			drawHeight = height;
+			drawWidth = height * imgAspectRatio;
+			x = (width - drawWidth) / 2;
+			y = 0;
+		}
+
+		image(iScreen3, x, y, drawWidth, drawHeight);
 	}
 }
 
@@ -829,8 +1370,8 @@ class MonsterFlame {
 		this.speed = speed;
 		this.ww = unit / 1;
 		this.hh = this.ww * 0.45;
-
 		this.size = this.ww;
+		this.collisionDiameter = this.ww * 0.8; // Added collisionDiameter
 	}
 
 	updateThis(x, y) {
@@ -841,8 +1382,17 @@ class MonsterFlame {
 	drawThis() {
 		this.ww = unit / 1;
 		this.hh = this.ww * 0.45;
+		this.size = this.ww; // Collision size for MonsterFlame is its width
+		this.collisionDiameter = this.ww * 0.8; // Update collisionDiameter
 
-		this.size = this.ww;
+		// Draw debug collision boundary if debugMode is active
+		if (debugMode) {
+			noFill();
+			stroke(0, 255, 255, 150); // Cyan, semi-transparent
+			strokeWeight(2);
+			ellipse(this.x, this.y, this.size, this.size); // Draw as a circle with diameter 'this.size'
+			noStroke();
+		}
 
 		textAlign(CENTER, CENTER);
 		textSize(unit / 2);
@@ -861,7 +1411,8 @@ class Weapon {
 		this.speed = unit / 32;
 		this.ww = unit / 4;
 		this.hh = this.ww / 2;
-		this.size = this.ww;
+		this.size = this.hh; // Corrected: was this.ww, now consistent with drawThis logic for collision
+		this.collisionDiameter = this.ww * 2; // Added collisionDiameter
 		this.trail = []; // Array to store trail positions
 		this.trailLength = unit / 9; // Increased from 5 to 15 for longer trail
 		this.trailSpacing = unit / 2; // Reduced spacing for smoother trail
@@ -877,6 +1428,17 @@ class Weapon {
 		this.ww = unit / 4;
 		this.hh = this.ww / 2;
 		this.size = this.hh;
+		this.collisionDiameter = this.ww * 2; // Update collisionDiameter
+
+		// Draw debug collision boundary if debugMode is active
+		if (debugMode) {
+			noFill();
+			stroke(255, 255, 0, 150); // Yellow, semi-transparent
+			strokeWeight(2);
+			// For Weapon, collision is based on this.size which is this.hh
+			ellipse(this.x, this.y, this.collisionDiameter, this.collisionDiameter); // Draw as a circle with diameter 'this.size'
+			noStroke();
+		}
 
 		// Update trail
 		this.trail.unshift({ x: this.x, y: this.y }); // Add current position to start of trail
@@ -935,6 +1497,7 @@ class Blast {
 		this.size = size;
 		this.life = 20;
 		this.currentLife = this.life;
+		this.collisionDiameter = this.size; // Added collisionDiameter
 	}
 
 	drawThis() {
@@ -950,9 +1513,10 @@ class AddChai {
 	constructor(x, y) {
 		this.x = x;
 		this.y = y;
-		this.size = unit / 3; // Use unit/4 for consistent scaling
+		this.size = unit / 3; // Use unit/4 for consistent scaling (this is radius)
 		this.life = 400;
 		this.currentLife = this.life;
+		this.collisionDiameter = this.size * 2.0; // Added collisionDiameter (size is radius)
 	}
 
 	drawThis() {
@@ -998,7 +1562,7 @@ class Monster {
 		this.y = height / 2;
 		this.targetX = this.x;
 		this.targetY = this.y;
-		this.size = unit / 2;
+		// this.size = unit / 2; // Original size, less relevant now with ww/hh
 		this.direction = 1;
 		this.health = 10;
 
@@ -1006,7 +1570,8 @@ class Monster {
 		this.ww = unit * 3;
 		this.hh = this.ww * 0.8;
 
-		this.size = this.hh;
+		this.size = this.hh; // Retained for any legacy use, but collisionDiameter is primary
+		this.collisionDiameter = Math.max(this.ww, this.hh) * 0.7; // Added collisionDiameter
 	}
 
 	updateThis(x, y) {
@@ -1017,8 +1582,20 @@ class Monster {
 	drawThis() {
 		this.ww = unit * 3;
 		this.hh = this.ww * 0.8;
+		this.size = this.hh; // Collision for Monster is based on its height (this.hh)
+		this.collisionDiameter = Math.max(this.ww, this.hh) * 0.7; // Update collisionDiameter
 
-		this.size = this.hh;
+		// Draw debug collision boundary if debugMode is active
+		if (debugMode) {
+			noFill();
+			stroke(255, 0, 0, 150); // Red, semi-transparent
+			strokeWeight(2);
+			// Monster's collision diameter in checkCollision is Math.max(this.ww, this.hh)
+			// but its .size is set to this.hh. For consistency with checkCollision:
+			let collisionDiameter = Math.max(this.ww, this.hh);
+			ellipse(this.x, this.y, collisionDiameter, collisionDiameter);
+			noStroke();
+		}
 
 		//update position here
 		let movementGap = unit / 10;
@@ -1070,6 +1647,8 @@ class Player {
 		this.direction = 1;
 		this.health = 3;
 		this.characterIndex = 0;
+
+		this.collisionDiameter = Math.max(this.ww, this.hh) * 0.6;
 	}
 
 	updateThis(x, y) {
@@ -1081,6 +1660,18 @@ class Player {
 		this.ww = unit * 1;
 		this.hh = this.ww * 1.6;
 		this.size = this.hh;
+
+		// Draw debug collision boundary if debugMode is active
+		if (debugMode) {
+			noFill();
+			stroke(0, 255, 0, 150); // Green, semi-transparent
+			strokeWeight(2);
+			// Player's collision diameter in checkCollision is Math.max(this.ww, this.hh)
+			// but its .size is set to this.hh. For consistency with checkCollision:
+
+			ellipse(this.x, this.y, this.collisionDiameter, this.collisionDiameter);
+			noStroke();
+		}
 
 		// Move x and y toward the target.
 		this.x = lerp(this.x, this.targetX, 0.07);
@@ -1116,4 +1707,55 @@ class Player {
 
 		frontPar = (width / 2 - this.y) * 0.1;
 	}
+}
+
+// New function to calculate character select screen UI element positions and sizes
+function updateCharacterSelectLayout() {
+	// Instruction Image (top center)
+	// Assuming instruction image should be responsive, e.g., 80% of canvas width
+	// and maintain its aspect ratio. Adjust as needed.
+	if (iInstruction && iInstruction.width > 0) {
+		// Check if image is loaded
+		let aspectRatio = iInstruction.height / iInstruction.width;
+		INSTRUCTION_IMG_WIDTH = width * 0.3; // Example: 60% of canvas width
+		INSTRUCTION_IMG_HEIGHT = INSTRUCTION_IMG_WIDTH * aspectRatio;
+		INSTRUCTION_IMG_X = (width - INSTRUCTION_IMG_WIDTH) / 2;
+		INSTRUCTION_IMG_Y = unit * 0.5; // Example: 0.5 unit from top
+	} else {
+		// Default/fallback values if image not loaded yet
+		INSTRUCTION_IMG_WIDTH = 0;
+		INSTRUCTION_IMG_HEIGHT = 0;
+		INSTRUCTION_IMG_X = 0;
+		INSTRUCTION_IMG_Y = 0;
+	}
+
+	// Arrow Images
+	// Size based on 'unit', e.g., 1 unit wide. Adjust as needed.
+	if (iLeftArrow && iLeftArrow.width > 0) {
+		// Check if image is loaded
+		let arrowAspectRatio = iLeftArrow.height / iLeftArrow.width;
+		ARROW_IMG_WIDTH = unit * 1.5;
+		ARROW_IMG_HEIGHT = ARROW_IMG_WIDTH * arrowAspectRatio;
+	} else {
+		ARROW_IMG_WIDTH = unit * 1.5; // Fallback size
+		ARROW_IMG_HEIGHT = unit * 1.5; // Fallback size (assuming square if not loaded)
+	}
+	LEFT_ARROW_X = width / 2 - unit * 3.5; // Adjusted spacing
+	LEFT_ARROW_Y = height / 2 + unit * 0.5; // Align with character center
+	RIGHT_ARROW_X = width / 2 + unit * 3.5; // Adjusted spacing
+	RIGHT_ARROW_Y = height / 2 + unit * 0.5; // Align with character center
+
+	// Select Player Button Image (bottom center)
+	// Size based on 'unit', e.g., 4 units wide. Adjust as needed.
+	if (iSelectPlayerBtn && iSelectPlayerBtn.width > 0) {
+		// Check if image is loaded
+		let btnAspectRatio = iSelectPlayerBtn.height / iSelectPlayerBtn.width;
+		SELECT_BTN_IMG_WIDTH = unit * 5;
+		SELECT_BTN_IMG_HEIGHT = SELECT_BTN_IMG_WIDTH * btnAspectRatio;
+	} else {
+		SELECT_BTN_IMG_WIDTH = unit * 5; // Fallback size
+		SELECT_BTN_IMG_HEIGHT = unit * 1; // Fallback size
+	}
+	SELECT_BUTTON_X = (width - SELECT_BTN_IMG_WIDTH) / 2;
+	SELECT_BUTTON_Y = height - unit * 1.3 - SELECT_BTN_IMG_HEIGHT / 2; // Position above bottom edge
 }
