@@ -15,6 +15,16 @@ let fireRate = 1000; // cooldown time in milliseconds
 let gAddChai1, gAddChai2, gAddChai3, gAddChai4;
 let parallaxBuffersInitialized = false; // Flag to track buffer initialization
 
+// Graphics buffer for pre-scaled static screen background
+let gScreenBack;
+let screenBackBufferInitialized = false;
+
+// Graphics buffer for pre-rendered scrolling clouds
+let gCloudsBuffer;
+let cloudsBufferInitialized = false;
+let gCloudBufferWidth = 0;
+let gCloudBufferHeight = 0;
+
 let iMonster;
 let iPlayer;
 let iFlame;
@@ -272,6 +282,18 @@ function setup() {
 	if (!parallaxBuffersInitialized) {
 		console.warn(
 			"Parallax buffers not initialized during setup. Will attempt in draw loop."
+		);
+	}
+	screenBackBufferInitialized = updateScreenBackBuffer(); // Initialize static background buffer
+	if (!screenBackBufferInitialized) {
+		console.warn(
+			"ScreenBack buffer not initialized during setup. Will attempt in draw loops."
+		);
+	}
+	cloudsBufferInitialized = updateCloudsBuffer(); // Initialize clouds buffer
+	if (!cloudsBufferInitialized) {
+		console.warn(
+			"Clouds buffer not initialized during setup. Will attempt in draw loops."
 		);
 	}
 }
@@ -627,6 +649,8 @@ function windowResized() {
 	HEALTH_HEART_SPACING = HEALTH_HEART_SIZE * 1.2;
 
 	updateParallaxBuffers(); // Update parallax buffers on resize
+	screenBackBufferInitialized = updateScreenBackBuffer(); // Update static background buffer on resize
+	cloudsBufferInitialized = updateCloudsBuffer(); // Update clouds buffer on resize
 }
 
 function drawGame() {
@@ -642,27 +666,19 @@ function drawGame() {
 		}
 	}
 
-	background(0); // Draw black background, parallax layers will draw on top if ready
+	// Attempt to initialize static screen background buffer if not already done
+	if (!screenBackBufferInitialized) {
+		screenBackBufferInitialized = updateScreenBackBuffer();
+		if (screenBackBufferInitialized) {
+			console.log("ScreenBack buffer successfully initialized from drawGame.");
+		}
+	}
+
+	background(0); // Draw black background, layers will draw on top if ready
 
 	// --- Draw Static Background and Clouds (like screen2 & screen3) ---
-	if (iScreenBack) {
-		// Calculate dimensions to maintain aspect ratio for iScreenBack
-		let imgAspectRatio = iScreenBack.width / iScreenBack.height;
-		let canvasAspectRatio = width / height;
-		let drawWidth, drawHeight, x, y;
-
-		if (imgAspectRatio < canvasAspectRatio) {
-			drawWidth = width;
-			drawHeight = width / imgAspectRatio;
-			x = 0;
-			y = (height - drawHeight) / 2;
-		} else {
-			drawHeight = height;
-			drawWidth = height * imgAspectRatio;
-			x = (width - drawWidth) / 2;
-			y = 0;
-		}
-		image(iScreenBack, x, y, drawWidth, drawHeight);
+	if (gScreenBack) {
+		image(gScreenBack, 0, 0);
 	}
 
 	drawClouds(); // Draw animated clouds on top of iScreenBack
@@ -1149,26 +1165,19 @@ function drawGameOver() {
 	noStroke(); // Prevent outlines
 	background(0);
 
-	// Draw background
-	if (iScreenBack) {
-		// Calculate dimensions to maintain aspect ratio
-		let imgAspectRatio = iScreenBack.width / iScreenBack.height;
-		let canvasAspectRatio = width / height;
-		let drawWidth, drawHeight, x, y;
-
-		if (imgAspectRatio < canvasAspectRatio) {
-			drawWidth = width;
-			drawHeight = width / imgAspectRatio;
-			x = 0;
-			y = (height - drawHeight) / 2;
-		} else {
-			drawHeight = height;
-			drawWidth = height * imgAspectRatio;
-			x = (width - drawWidth) / 2;
-			y = 0;
+	// Attempt to initialize static screen background buffer if not already done
+	if (!screenBackBufferInitialized) {
+		screenBackBufferInitialized = updateScreenBackBuffer();
+		if (screenBackBufferInitialized) {
+			console.log(
+				"ScreenBack buffer successfully initialized from drawGameOver."
+			);
 		}
+	}
 
-		image(iScreenBack, x, y, drawWidth, drawHeight);
+	// Draw background
+	if (gScreenBack) {
+		image(gScreenBack, 0, 0);
 	}
 
 	// Draw animated clouds
@@ -1302,50 +1311,94 @@ function startTransition(newScreen) {
 
 // Helper function to draw animated clouds
 function drawClouds() {
-	if (iScreenCloud) {
-		// Calculate cloud dimensions to fit height
-		let cloudHeight = height * 1.3; // Use full height
-		let cloudWidth = (cloudHeight * iScreenCloud.width) / iScreenCloud.height;
-
-		// Draw multiple cloud images to create seamless scrolling
-		let numClouds = ceil(width / cloudWidth) + 1;
-		for (let i = -1; i < numClouds; i++) {
-			let cloudX = i * cloudWidth + cloudOffset;
-			image(iScreenCloud, cloudX, 0, cloudWidth, cloudHeight);
+	// If the clouds buffer isn't initialized yet, try to initialize it
+	if (!cloudsBufferInitialized) {
+		cloudsBufferInitialized = updateCloudsBuffer();
+		if (!cloudsBufferInitialized) {
+			// If still not successful, display a simple fallback or return silently
+			return; // Skip cloud drawing if buffer can't be initialized
 		}
+	}
+
+	// Use the pre-rendered cloud buffer instead of drawing multiple cloud images
+	if (gCloudsBuffer) {
+		// Draw the buffer twice to ensure seamless scrolling
+		// First copy at current offset
+		image(gCloudsBuffer, cloudOffset, 0);
+		// Second copy to make a continuous loop
+		image(gCloudsBuffer, cloudOffset + gCloudBufferWidth, 0);
 
 		// Update cloud offset
 		cloudOffset -= cloudSpeed;
-		if (cloudOffset <= -cloudWidth) {
-			cloudOffset = 0;
+		// Reset when the first copy has scrolled completely off-screen
+		if (cloudOffset <= -gCloudBufferWidth) {
+			cloudOffset += gCloudBufferWidth;
 		}
 	}
+}
+
+// Function to create pre-rendered cloud buffer
+function updateCloudsBuffer() {
+	if (!iScreenCloud || iScreenCloud.width === 0) {
+		// Image not loaded yet
+		return false;
+	}
+
+	// Calculate scaled dimensions for clouds - maintain aspect ratio
+	gCloudBufferHeight = height * 1.3; // Same as in original drawClouds
+	let singleCloudWidth =
+		(gCloudBufferHeight * iScreenCloud.width) / iScreenCloud.height;
+
+	// Make the buffer wide enough to hold 3 copies of the cloud image
+	// This ensures smooth scrolling with fewer draw calls
+	gCloudBufferWidth = singleCloudWidth * 3;
+
+	// Check if buffer needs to be recreated (e.g., after resize)
+	if (
+		gCloudsBuffer &&
+		(gCloudsBuffer.width !== gCloudBufferWidth ||
+			gCloudsBuffer.height !== gCloudBufferHeight)
+	) {
+		gCloudsBuffer.remove();
+		gCloudsBuffer = null;
+	}
+
+	// Create the buffer if it doesn't exist
+	if (!gCloudsBuffer) {
+		gCloudsBuffer = createGraphics(gCloudBufferWidth, gCloudBufferHeight);
+
+		// Draw three copies of the cloud image side by side
+		for (let i = 0; i < 3; i++) {
+			gCloudsBuffer.image(
+				iScreenCloud,
+				i * singleCloudWidth,
+				0,
+				singleCloudWidth,
+				gCloudBufferHeight
+			);
+		}
+	}
+
+	return true;
 }
 
 function drawScreen2() {
 	noStroke();
 	background(0);
 
-	// Draw background
-	if (iScreenBack) {
-		// Calculate dimensions to maintain aspect ratio
-		let imgAspectRatio = iScreenBack.width / iScreenBack.height;
-		let canvasAspectRatio = width / height;
-		let drawWidth, drawHeight, x, y;
-
-		if (imgAspectRatio < canvasAspectRatio) {
-			drawWidth = width;
-			drawHeight = width / imgAspectRatio;
-			x = 0;
-			y = (height - drawHeight) / 2;
-		} else {
-			drawHeight = height;
-			drawWidth = height * imgAspectRatio;
-			x = (width - drawWidth) / 2;
-			y = 0;
+	// Attempt to initialize static screen background buffer if not already done
+	if (!screenBackBufferInitialized) {
+		screenBackBufferInitialized = updateScreenBackBuffer();
+		if (screenBackBufferInitialized) {
+			console.log(
+				"ScreenBack buffer successfully initialized from drawScreen2."
+			);
 		}
+	}
 
-		image(iScreenBack, x, y, drawWidth, drawHeight);
+	// Draw background
+	if (gScreenBack) {
+		image(gScreenBack, 0, 0);
 	}
 
 	// Draw animated clouds
@@ -1378,26 +1431,19 @@ function drawScreen3() {
 	noStroke();
 	background(0);
 
-	// Draw background
-	if (iScreenBack) {
-		// Calculate dimensions to maintain aspect ratio
-		let imgAspectRatio = iScreenBack.width / iScreenBack.height;
-		let canvasAspectRatio = width / height;
-		let drawWidth, drawHeight, x, y;
-
-		if (imgAspectRatio < canvasAspectRatio) {
-			drawWidth = width;
-			drawHeight = width / imgAspectRatio;
-			x = 0;
-			y = (height - drawHeight) / 2;
-		} else {
-			drawHeight = height;
-			drawWidth = height * imgAspectRatio;
-			x = (width - drawWidth) / 2;
-			y = 0;
+	// Attempt to initialize static screen background buffer if not already done
+	if (!screenBackBufferInitialized) {
+		screenBackBufferInitialized = updateScreenBackBuffer();
+		if (screenBackBufferInitialized) {
+			console.log(
+				"ScreenBack buffer successfully initialized from drawScreen3."
+			);
 		}
+	}
 
-		image(iScreenBack, x, y, drawWidth, drawHeight);
+	// Draw background
+	if (gScreenBack) {
+		image(gScreenBack, 0, 0);
 	}
 
 	// Draw animated clouds
@@ -1908,5 +1954,52 @@ function updateParallaxBuffers() {
 		gAddChai4.tint(200);
 		gAddChai4.image(iAddChai4, 0, 0, gAddChai4.width, gAddChai4.height);
 	}
+	return true; // Indicate success
+}
+
+// New function to create/update the pre-scaled static screen background buffer
+function updateScreenBackBuffer() {
+	if (!iScreenBack || iScreenBack.width === 0) {
+		// console.warn("iScreenBack image not fully loaded, skipping buffer update.");
+		return false; // Indicate failure
+	}
+
+	let scaledWidth,
+		scaledHeight,
+		offsetX = 0,
+		offsetY = 0;
+	let imgAspectRatio = iScreenBack.width / iScreenBack.height;
+	let canvasAspectRatio = width / height;
+
+	if (imgAspectRatio < canvasAspectRatio) {
+		// Image is wider than canvas aspect ratio, fit by width, letterbox top/bottom
+		scaledWidth = width;
+		scaledHeight = width / imgAspectRatio;
+		offsetY = (height - scaledHeight) / 2;
+	} else {
+		// Image is taller than canvas aspect ratio (or same), fit by height, letterbox left/right
+		scaledHeight = height;
+		scaledWidth = height * imgAspectRatio;
+		offsetX = (width - scaledWidth) / 2;
+	}
+
+	if (
+		gScreenBack &&
+		(gScreenBack.width !== width || gScreenBack.height !== height)
+	) {
+		gScreenBack.remove();
+		gScreenBack = null;
+	}
+
+	if (!gScreenBack) {
+		gScreenBack = createGraphics(width, height);
+		// console.log(`Creating gScreenBack: ${width}x${height}`);
+		// Optional: Clear the buffer if there might be letterboxing and you want a specific color
+		// gScreenBack.background(0); // Or any other color for letterbox areas
+	}
+
+	// Draw the iScreenBack onto the gScreenBack buffer, scaled and centered
+	gScreenBack.image(iScreenBack, offsetX, offsetY, scaledWidth, scaledHeight);
+
 	return true; // Indicate success
 }
