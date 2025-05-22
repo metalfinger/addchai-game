@@ -107,12 +107,12 @@ let SELECT_BTN_IMG_WIDTH, SELECT_BTN_IMG_HEIGHT; // Select button position (SELE
 // Arrow click animation variables
 let leftArrowOffset = 0;
 let rightArrowOffset = 0;
-let ARROW_CLICK_OFFSET = 10; // pixels to move when clicked
+let ARROW_CLICK_OFFSET; // pixels to move when clicked (was 10) - Will be initialized in setup/windowResized
 let ARROW_ANIMATION_SPEED = 0.2; // speed of return animation
 
 // Parallax offset values
-let PARALLAX_OFFSET_UP = -95;
-let PARALLAX_OFFSET_DOWN = -unit;
+let PARALLAX_OFFSET_UP; // Was -95 - Will be initialized in setup/windowResized
+let PARALLAX_OFFSET_DOWN; // Will be initialized in setup/windowResized
 
 // Layer positions
 let layer1Y = 0;
@@ -149,7 +149,7 @@ let HEALTH_HEART_SPACING; // space between hearts
 
 // Cloud animation variables
 let cloudOffset = 0;
-let cloudSpeed = -0.1; // pixels per frame
+let cloudSpeed; // pixels per frame - Will be initialized in setup and windowResized
 
 // Score submission variables
 let nameInput;
@@ -212,6 +212,10 @@ function setup() {
 	textFont("VT323");
 
 	unit = width / 16;
+	cloudSpeed = -unit / 2000; // Initialize cloudSpeed here
+	ARROW_CLICK_OFFSET = unit / 1.6; // Initialize ARROW_CLICK_OFFSET here
+	PARALLAX_OFFSET_UP = -unit * 6; // Initialize PARALLAX_OFFSET_UP here
+	PARALLAX_OFFSET_DOWN = -unit; // Initialize PARALLAX_OFFSET_DOWN here
 
 	updateCharacterSelectLayout(); // New function to set positions and sizes
 
@@ -593,6 +597,10 @@ function windowResized() {
 	resizeCanvas(windowWidth, (windowWidth * 9) / 16);
 
 	unit = width / 16;
+	cloudSpeed = -unit / 2000; // Update cloudSpeed here to be consistent with setup
+	ARROW_CLICK_OFFSET = unit / 1.6; // Update ARROW_CLICK_OFFSET here
+	PARALLAX_OFFSET_UP = -unit * 6; // Update PARALLAX_OFFSET_UP here
+	PARALLAX_OFFSET_DOWN = -unit; // Update PARALLAX_OFFSET_DOWN here
 
 	updateCharacterSelectLayout(); // Recalculate layout on resize
 
@@ -686,7 +694,8 @@ function drawGame() {
 		m.health > 0 &&
 		currentScreen === "game"
 	) {
-		let mf = new MonsterFlame(m.x - unit * 2, m.y, random(1, 5));
+		let flameSpeed = random(unit / 40, unit / 20); // Adjusted for unit-relativity
+		let mf = new MonsterFlame(m.x - unit * 2, m.y, flameSpeed);
 		mFlameArray.push(mf);
 		monsterLastFired = millis();
 		if (monsterShootSound) monsterShootSound.play();
@@ -1143,65 +1152,19 @@ function drawGameOver() {
 	if (characterSheet && gameResult === "victory") {
 		let charWidth = 400; // Original character width in sprite sheet
 		let charHeight = characterSheet.height;
-		let displayWidth = unit * 3;
+		let displayWidth = unit * 2;
 		let displayHeight = (displayWidth * charHeight) / charWidth;
 
 		image(
 			characterSheet,
 			width / 2 - displayWidth / 2,
-			height / 2 + unit,
+			height / 2 + unit / 3,
 			displayWidth,
 			displayHeight,
 			p.characterIndex * charWidth,
 			0,
 			charWidth,
 			charHeight
-		);
-
-		// Draw character name
-		textSize(unit * 0.5);
-		fill(255);
-		text(characterNames[p.characterIndex], width / 2, height / 2 + unit * 3);
-	}
-
-	// Draw score submission UI if victory and not yet submitted
-	if (gameResult === "victory" && !scoreSubmitted) {
-		// Create input field if it doesn't exist
-		if (!nameInput) {
-			nameInput = createInput("");
-			nameInput.position(width / 2 - unit * 2, height / 2 + unit * 4);
-			nameInput.size(unit * 4, unit * 0.8);
-			nameInput.style("text-align", "center");
-			nameInput.style("font-size", unit * 0.4 + "px");
-			nameInput.style("font-family", "VT323");
-		}
-
-		// Create submit button if it doesn't exist
-		if (!submitButton) {
-			submitButton = createButton("Submit Score");
-			submitButton.position(width / 2 - unit * 1.5, height / 2 + unit * 5);
-			submitButton.size(unit * 3, unit * 0.8);
-			submitButton.style("font-size", unit * 0.4 + "px");
-			submitButton.style("font-family", "VT323");
-			submitButton.mousePressed(submitScore);
-		}
-
-		// Draw instructions
-		textSize(unit * 0.4);
-		fill(255);
-		text(
-			"Enter your name to submit score:",
-			width / 2,
-			height / 2 + unit * 3.5
-		);
-	} else if (scoreSubmitted) {
-		// Show submitted message
-		textSize(unit * 0.5);
-		fill(0, 255, 0);
-		text(
-			"Score submitted! Thank you for playing!",
-			width / 2,
-			height / 2 + unit * 4
 		);
 	}
 
@@ -1212,29 +1175,6 @@ function drawGameOver() {
 	fill(255);
 	text("Press ENTER to restart", width / 2, height - unit);
 	noStroke();
-}
-
-// Add function to handle score submission
-function submitScore() {
-	if (nameInput && nameInput.value()) {
-		playerName = nameInput.value();
-		scoreSubmitted = true;
-
-		// Here you would typically send the score to your backend
-		// For now, we'll just log it
-		console.log("Score submitted:", {
-			name: playerName,
-			character: characterNames[p.characterIndex],
-			time: lastGameDuration,
-			date: new Date().toISOString(),
-		});
-
-		// Remove the input elements
-		nameInput.remove();
-		submitButton.remove();
-		nameInput = null;
-		submitButton = null;
-	}
 }
 
 function handleTransition() {
