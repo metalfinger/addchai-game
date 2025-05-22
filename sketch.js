@@ -29,14 +29,6 @@ let iMonster;
 let iPlayer;
 let iFlame;
 let iWeapon;
-let iAddChai1;
-let iAddChai2;
-let iAddChai3;
-let iAddChai4;
-let characterSheet;
-let lifeIcon;
-let healthBarAbove;
-let healthBarBelow;
 let iAddChaiImg;
 let iReloadIcon;
 let iBackPlayer;
@@ -60,6 +52,7 @@ let iSelectPlayerBtn;
 let currentScreen = "characterSelect"; // 'characterSelect', 'screen2', 'screen3', 'game', or 'gameOver'
 let currentCharacter = 0;
 let gameResult = ""; // "victory" or "defeat" to track the game result
+const TOTAL_CHARACTERS = 10;
 const characterNames = [
 	"Warrior",
 	"Mage",
@@ -71,7 +64,6 @@ const characterNames = [
 	"Berserker",
 	"Monk",
 	"Druid",
-	"Warlock",
 ];
 
 // Screen transition variables
@@ -157,7 +149,13 @@ let HEALTH_HEART_SPACING; // space between hearts
 
 // Cloud animation variables
 let cloudOffset = 0;
-let cloudSpeed = 0.5; // pixels per frame
+let cloudSpeed = -0.1; // pixels per frame
+
+// Score submission variables
+let nameInput;
+let submitButton;
+let scoreSubmitted = false;
+let playerName = "";
 
 function preload() {
 	// Preload any assets here if needed
@@ -165,22 +163,22 @@ function preload() {
 
 	// Load all images
 	iMonster = loadImage("asset/William.png");
-	iPlayer = loadImage("asset/Playerr.png");
+	// iPlayer = loadImage("asset/Playerr.png"); // Not used
 	iFlame = loadImage("asset/Blastt.png");
-	iWeapon = loadImage("asset/Weaponn.png");
-	iAddChai1 = loadImage("asset/map/addchai1.png", () =>
-		console.log("addchai1 loaded")
-	);
-	iAddChai2 = loadImage("asset/map/addchai2.png", () =>
-		console.log("addchai2 loaded")
-	);
-	iAddChai3 = loadImage("asset/map/addchai3.png", () =>
-		console.log("addchai3 loaded")
-	);
-	iAddChai4 = loadImage("asset/map/addchai4.png", () =>
-		console.log("addchai4 loaded")
-	);
-	characterSheet = loadImage("asset/character/Character Sheet3.png");
+	// iWeapon = loadImage("asset/Weaponn.png"); // Not used
+	// iAddChai1 = loadImage("asset/map/addchai1.png", () =>
+	// 	console.log("addchai1 loaded")
+	// );
+	// iAddChai2 = loadImage("asset/map/addchai2.png", () =>
+	// 	console.log("addchai2 loaded")
+	// );
+	// iAddChai3 = loadImage("asset/map/addchai3.png", () =>
+	// 	console.log("addchai3 loaded")
+	// );
+	// iAddChai4 = loadImage("asset/map/addchai4.png", () =>
+	// 	console.log("addchai4 loaded")
+	// );
+	characterSheet = loadImage("asset/character/Character Sheet_final.png");
 	lifeIcon = loadImage("asset/character/life.png"); // Add life icon loading
 	healthBarAbove = loadImage("asset/monster/health_above.png");
 	healthBarBelow = loadImage("asset/monster/health_below.png");
@@ -215,17 +213,6 @@ function setup() {
 
 	unit = width / 16;
 
-	// Initialize navigation and button positions - will be refined
-	// ARROW_SIZE = unit * 0.5; // Will be replaced by image dimensions
-	// LEFT_ARROW_X = width / 2 - unit * 3;
-	// LEFT_ARROW_Y = height / 2;
-	// RIGHT_ARROW_X = width / 2 + unit * 3;
-	// RIGHT_ARROW_Y = height / 2;
-	// SELECT_BUTTON_WIDTH = unit * 4.2; // Will be replaced by image dimensions
-	// SELECT_BUTTON_HEIGHT = unit * 0.7; // Will be replaced by image dimensions
-	// SELECT_BUTTON_X = width / 2 - SELECT_BUTTON_WIDTH / 2;
-	// SELECT_BUTTON_Y = height - unit * 1.3;
-
 	updateCharacterSelectLayout(); // New function to set positions and sizes
 
 	// Initialize indicator positions and sizes
@@ -243,22 +230,14 @@ function setup() {
 	HEALTH_HEART_SIZE = unit * 0.5;
 	HEALTH_HEART_SPACING = HEALTH_HEART_SIZE * 1;
 
-	PARALLAX_OFFSET_UP = 0;
-	PARALLAX_OFFSET_DOWN = -unit;
-
 	m = new Monster();
 	p = new Player();
 
 	//loading images
 	iMonster = loadImage("asset/William.png");
-	iPlayer = loadImage("asset/Playerr.png");
+	// iPlayer = loadImage("asset/Playerr.png"); // Not used
 	iFlame = loadImage("asset/Blastt.png");
-	iWeapon = loadImage("asset/Weaponn.png");
-
-	iAddChai1 = loadImage("asset/map/addchai1.png");
-	iAddChai2 = loadImage("asset/map/addchai2.png");
-	iAddChai3 = loadImage("asset/map/addchai3.png");
-	iAddChai4 = loadImage("asset/map/addchai4.png");
+	// iWeapon = loadImage("asset/Weaponn.png"); // Not used
 
 	console.log("Setup completed");
 
@@ -276,13 +255,6 @@ function setup() {
 		} catch (error) {
 			console.log("Error initializing music:", error);
 		}
-	}
-	// updateParallaxBuffers(); // Call is now conditional / returns a status
-	parallaxBuffersInitialized = updateParallaxBuffers();
-	if (!parallaxBuffersInitialized) {
-		console.warn(
-			"Parallax buffers not initialized during setup. Will attempt in draw loop."
-		);
 	}
 	screenBackBufferInitialized = updateScreenBackBuffer(); // Initialize static background buffer
 	if (!screenBackBufferInitialized) {
@@ -531,7 +503,8 @@ function mousePressed() {
 			mouseY > LEFT_ARROW_Y - ARROW_IMG_HEIGHT / 2 &&
 			mouseY < LEFT_ARROW_Y + ARROW_IMG_HEIGHT / 2
 		) {
-			currentCharacter = (currentCharacter - 1 + 11) % 11;
+			currentCharacter =
+				(currentCharacter - 1 + TOTAL_CHARACTERS) % TOTAL_CHARACTERS;
 			leftArrowOffset = -ARROW_CLICK_OFFSET;
 			clickSound.play();
 		}
@@ -544,7 +517,7 @@ function mousePressed() {
 			mouseY > RIGHT_ARROW_Y - ARROW_IMG_HEIGHT / 2 &&
 			mouseY < RIGHT_ARROW_Y + ARROW_IMG_HEIGHT / 2
 		) {
-			currentCharacter = (currentCharacter + 1) % 11;
+			currentCharacter = (currentCharacter + 1) % TOTAL_CHARACTERS;
 			rightArrowOffset = ARROW_CLICK_OFFSET;
 			clickSound.play();
 		}
@@ -566,12 +539,13 @@ function mousePressed() {
 function keyPressed() {
 	if (currentScreen === "characterSelect" && !isTransitioning) {
 		if (keyCode === LEFT_ARROW) {
-			currentCharacter = (currentCharacter - 1 + 11) % 11;
+			currentCharacter =
+				(currentCharacter - 1 + TOTAL_CHARACTERS) % TOTAL_CHARACTERS;
 			leftArrowOffset = -ARROW_CLICK_OFFSET;
 			clickSound.play();
 		}
 		if (keyCode === RIGHT_ARROW) {
-			currentCharacter = (currentCharacter + 1) % 11;
+			currentCharacter = (currentCharacter + 1) % TOTAL_CHARACTERS;
 			rightArrowOffset = ARROW_CLICK_OFFSET;
 			clickSound.play();
 		}
@@ -620,17 +594,6 @@ function windowResized() {
 
 	unit = width / 16;
 
-	// Update navigation and button positions
-	// ARROW_SIZE = unit * 0.5; // Replaced by image dimensions
-	// LEFT_ARROW_X = width / 2 - unit * 3;
-	// LEFT_ARROW_Y = height / 2;
-	// RIGHT_ARROW_X = width / 2 + unit * 3;
-	// RIGHT_ARROW_Y = height / 2;
-	// SELECT_BUTTON_WIDTH = unit * 4.2; // Replaced by image dimensions
-	// SELECT_BUTTON_HEIGHT = unit * 0.7; // Replaced by image dimensions
-	// SELECT_BUTTON_X = width / 2 - SELECT_BUTTON_WIDTH / 2;
-	// SELECT_BUTTON_Y = height - unit * 1.3;
-
 	updateCharacterSelectLayout(); // Recalculate layout on resize
 
 	// Update indicator positions and sizes
@@ -648,23 +611,12 @@ function windowResized() {
 	HEALTH_HEART_SIZE = unit * 0.5;
 	HEALTH_HEART_SPACING = HEALTH_HEART_SIZE * 1.2;
 
-	updateParallaxBuffers(); // Update parallax buffers on resize
 	screenBackBufferInitialized = updateScreenBackBuffer(); // Update static background buffer on resize
 	cloudsBufferInitialized = updateCloudsBuffer(); // Update clouds buffer on resize
 }
 
 function drawGame() {
 	noStroke(); // Prevent outlines
-
-	// Attempt to initialize parallax buffers if not already done
-	if (!parallaxBuffersInitialized) {
-		parallaxBuffersInitialized = updateParallaxBuffers();
-		if (parallaxBuffersInitialized) {
-			console.log("Parallax buffers successfully initialized from drawGame.");
-		} else {
-			// Optional: could log here that it's still waiting, but might be spammy
-		}
-	}
 
 	// Attempt to initialize static screen background buffer if not already done
 	if (!screenBackBufferInitialized) {
@@ -684,35 +636,8 @@ function drawGame() {
 	drawClouds(); // Draw animated clouds on top of iScreenBack
 	// --- End Static Background and Clouds ---
 
-	// Calculate parallax effect based on player position
-	let normalizedPlayerY = map(p.y, 0, height, 0, 1);
-
-	// Update layer positions with parallax effect
-	layer4Y =
-		lerp(PARALLAX_OFFSET_UP, PARALLAX_OFFSET_DOWN, normalizedPlayerY) * 0.25;
-	layer3Y =
-		lerp(PARALLAX_OFFSET_UP, PARALLAX_OFFSET_DOWN, normalizedPlayerY) * 0.5;
-	layer2Y =
-		lerp(PARALLAX_OFFSET_UP, PARALLAX_OFFSET_DOWN, normalizedPlayerY) * 0.75;
-	layer1Y = lerp(PARALLAX_OFFSET_UP, PARALLAX_OFFSET_DOWN, normalizedPlayerY);
-
-	// Calculate height to maintain aspect ratio - No longer needed here for parallax
-	// let imgHeight1 = (width * iAddChai1.height) / iAddChai1.width;
-	// let imgHeight2 = (width * iAddChai2.height) / iAddChai2.width;
-	// let imgHeight3 = (width * iAddChai3.height) / iAddChai3.width;
-	// let imgHeight4 = (width * iAddChai4.height) / iAddChai4.width;
-
 	// Set blend mode for darker effect
 	blendMode(BLEND);
-
-	// Draw layers from back to front with maintained aspect ratio and dark tint
-	// tint(200); // Tint is now applied to the buffers directly
-
-	// Draw pre-scaled and pre-tinted buffers
-	if (gAddChai4) image(gAddChai4, 0, layer4Y);
-	if (gAddChai3) image(gAddChai3, 0, layer3Y);
-	if (gAddChai2) image(gAddChai2, 0, layer2Y);
-	if (gAddChai1) image(gAddChai1, 0, layer1Y);
 
 	// Reset blend mode and tint for other elements
 	blendMode(BLEND); // Ensure blend mode is still as expected or reset if necessary
@@ -1192,10 +1117,10 @@ function drawGameOver() {
 	strokeWeight(unit * 0.1);
 	if (gameResult === "victory") {
 		fill(0, 255, 0);
-		text("VICTORY!", width / 2, height / 2);
+		text("VICTORY!", width / 2, height / 2 - unit * 2);
 	} else {
 		fill(255, 0, 0);
-		text("GAME OVER", width / 2, height / 2);
+		text("GAME OVER", width / 2, height / 2 - unit * 2);
 	}
 	noStroke();
 
@@ -1210,8 +1135,74 @@ function drawGameOver() {
 		stroke(0);
 		strokeWeight(unit * 0.05);
 		fill(255, 255, 0);
-		text("Time: " + timeStr, width / 2, height / 2 + unit * 1.7);
+		text("Time: " + timeStr, width / 2, height / 2 - unit);
 		noStroke();
+	}
+
+	// Draw selected character
+	if (characterSheet && gameResult === "victory") {
+		let charWidth = 400; // Original character width in sprite sheet
+		let charHeight = characterSheet.height;
+		let displayWidth = unit * 3;
+		let displayHeight = (displayWidth * charHeight) / charWidth;
+
+		image(
+			characterSheet,
+			width / 2 - displayWidth / 2,
+			height / 2 + unit,
+			displayWidth,
+			displayHeight,
+			p.characterIndex * charWidth,
+			0,
+			charWidth,
+			charHeight
+		);
+
+		// Draw character name
+		textSize(unit * 0.5);
+		fill(255);
+		text(characterNames[p.characterIndex], width / 2, height / 2 + unit * 3);
+	}
+
+	// Draw score submission UI if victory and not yet submitted
+	if (gameResult === "victory" && !scoreSubmitted) {
+		// Create input field if it doesn't exist
+		if (!nameInput) {
+			nameInput = createInput("");
+			nameInput.position(width / 2 - unit * 2, height / 2 + unit * 4);
+			nameInput.size(unit * 4, unit * 0.8);
+			nameInput.style("text-align", "center");
+			nameInput.style("font-size", unit * 0.4 + "px");
+			nameInput.style("font-family", "VT323");
+		}
+
+		// Create submit button if it doesn't exist
+		if (!submitButton) {
+			submitButton = createButton("Submit Score");
+			submitButton.position(width / 2 - unit * 1.5, height / 2 + unit * 5);
+			submitButton.size(unit * 3, unit * 0.8);
+			submitButton.style("font-size", unit * 0.4 + "px");
+			submitButton.style("font-family", "VT323");
+			submitButton.mousePressed(submitScore);
+		}
+
+		// Draw instructions
+		textSize(unit * 0.4);
+		fill(255);
+		text(
+			"Enter your name to submit score:",
+			width / 2,
+			height / 2 + unit * 3.5
+		);
+	} else if (scoreSubmitted) {
+		// Show submitted message
+		textSize(unit * 0.5);
+		fill(0, 255, 0);
+		text(
+			"Score submitted! Thank you for playing!",
+			width / 2,
+			height / 2 + unit * 4
+		);
 	}
 
 	// Draw restart instruction at bottom with outline
@@ -1221,6 +1212,29 @@ function drawGameOver() {
 	fill(255);
 	text("Press ENTER to restart", width / 2, height - unit);
 	noStroke();
+}
+
+// Add function to handle score submission
+function submitScore() {
+	if (nameInput && nameInput.value()) {
+		playerName = nameInput.value();
+		scoreSubmitted = true;
+
+		// Here you would typically send the score to your backend
+		// For now, we'll just log it
+		console.log("Score submitted:", {
+			name: playerName,
+			character: characterNames[p.characterIndex],
+			time: lastGameDuration,
+			date: new Date().toISOString(),
+		});
+
+		// Remove the input elements
+		nameInput.remove();
+		submitButton.remove();
+		nameInput = null;
+		submitButton = null;
+	}
 }
 
 function handleTransition() {
@@ -1303,6 +1317,17 @@ function handleTransition() {
 
 function startTransition(newScreen) {
 	if (clickSound) clickSound.play(); // Play click sound on transition start
+
+	// Clean up input elements if they exist
+	if (nameInput) {
+		nameInput.remove();
+		nameInput = null;
+	}
+	if (submitButton) {
+		submitButton.remove();
+		submitButton = null;
+	}
+
 	isTransitioning = true;
 	targetScreen = newScreen;
 	fadeAlpha = 0;
@@ -1311,73 +1336,57 @@ function startTransition(newScreen) {
 
 // Helper function to draw animated clouds
 function drawClouds() {
-	// If the clouds buffer isn't initialized yet, try to initialize it
-	if (!cloudsBufferInitialized) {
-		cloudsBufferInitialized = updateCloudsBuffer();
-		if (!cloudsBufferInitialized) {
-			// If still not successful, display a simple fallback or return silently
-			return; // Skip cloud drawing if buffer can't be initialized
-		}
+	if (!gCloudsBuffer) {
+		return;
 	}
 
-	// Use the pre-rendered cloud buffer instead of drawing multiple cloud images
-	if (gCloudsBuffer) {
-		// Draw the buffer twice to ensure seamless scrolling
-		// First copy at current offset
-		image(gCloudsBuffer, cloudOffset, 0);
-		// Second copy to make a continuous loop
-		image(gCloudsBuffer, cloudOffset + gCloudBufferWidth, 0);
+	// Calculate the offset for scrolling horizontally
+	let offset = (millis() * cloudSpeed) % gCloudBufferWidth;
+	if (offset < 0) offset += gCloudBufferWidth; // Handle negative offsets
 
-		// Update cloud offset
-		cloudOffset -= cloudSpeed;
-		// Reset when the first copy has scrolled completely off-screen
-		if (cloudOffset <= -gCloudBufferWidth) {
-			cloudOffset += gCloudBufferWidth;
-		}
-	}
+	// Draw the cloud buffer twice to create seamless scrolling horizontally
+	image(gCloudsBuffer, offset - gCloudBufferWidth, 0);
+	image(gCloudsBuffer, offset, 0);
 }
 
 // Function to create pre-rendered cloud buffer
 function updateCloudsBuffer() {
-	if (!iScreenCloud || iScreenCloud.width === 0) {
-		// Image not loaded yet
+	if (!iScreenCloud) {
+		console.warn("iScreenCloud not loaded yet");
 		return false;
 	}
 
-	// Calculate scaled dimensions for clouds - maintain aspect ratio
-	gCloudBufferHeight = height * 1.3; // Same as in original drawClouds
-	let singleCloudWidth =
-		(gCloudBufferHeight * iScreenCloud.width) / iScreenCloud.height;
-
-	// Make the buffer wide enough to hold 3 copies of the cloud image
-	// This ensures smooth scrolling with fewer draw calls
-	gCloudBufferWidth = singleCloudWidth * 3;
-
-	// Check if buffer needs to be recreated (e.g., after resize)
+	// Create buffer if it doesn't exist or if dimensions changed
 	if (
-		gCloudsBuffer &&
-		(gCloudsBuffer.width !== gCloudBufferWidth ||
-			gCloudsBuffer.height !== gCloudBufferHeight)
+		!gCloudsBuffer ||
+		gCloudsBuffer.width !== width * 2 ||
+		gCloudsBuffer.height !== height
 	) {
-		gCloudsBuffer.remove();
-		gCloudsBuffer = null;
-	}
-
-	// Create the buffer if it doesn't exist
-	if (!gCloudsBuffer) {
-		gCloudsBuffer = createGraphics(gCloudBufferWidth, gCloudBufferHeight);
-
-		// Draw three copies of the cloud image side by side
-		for (let i = 0; i < 3; i++) {
-			gCloudsBuffer.image(
-				iScreenCloud,
-				i * singleCloudWidth,
-				0,
-				singleCloudWidth,
-				gCloudBufferHeight
-			);
+		if (gCloudsBuffer) {
+			gCloudsBuffer.remove();
 		}
+		gCloudsBuffer = createGraphics(width * 2, height);
 	}
+
+	// Clear the buffer
+	gCloudsBuffer.clear();
+
+	// Calculate dimensions to maintain aspect ratio
+	let imgHeight = (width * iScreenCloud.height) / iScreenCloud.width;
+
+	// Ensure the height fills the screen
+	if (imgHeight < height) {
+		imgHeight = height;
+	}
+
+	// Draw the image scaled to fit width while maintaining aspect ratio
+	// Draw it twice side by side for seamless scrolling
+	gCloudsBuffer.image(iScreenCloud, 0, 0, width, imgHeight);
+	gCloudsBuffer.image(iScreenCloud, width, 0, width, imgHeight);
+
+	// Store the buffer dimensions
+	gCloudBufferWidth = width * 2; // Double width for seamless scrolling
+	gCloudBufferHeight = imgHeight;
 
 	return true;
 }
@@ -1852,11 +1861,11 @@ function updateCharacterSelectLayout() {
 	if (iLeftArrow && iLeftArrow.width > 0) {
 		// Check if image is loaded
 		let arrowAspectRatio = iLeftArrow.height / iLeftArrow.width;
-		ARROW_IMG_WIDTH = unit * 1.5;
+		ARROW_IMG_WIDTH = unit * 1.0; // Reduced from 1.5 to 1.0
 		ARROW_IMG_HEIGHT = ARROW_IMG_WIDTH * arrowAspectRatio;
 	} else {
-		ARROW_IMG_WIDTH = unit * 1.5; // Fallback size
-		ARROW_IMG_HEIGHT = unit * 1.5; // Fallback size (assuming square if not loaded)
+		ARROW_IMG_WIDTH = unit * 1.0; // Reduced from 1.5 to 1.0
+		ARROW_IMG_HEIGHT = unit * 1.0; // Reduced from 1.5 to 1.0
 	}
 	LEFT_ARROW_X = width / 2 - unit * 3.5; // Adjusted spacing
 	LEFT_ARROW_Y = height / 2 + unit * 0.5; // Align with character center
@@ -1959,47 +1968,24 @@ function updateParallaxBuffers() {
 
 // New function to create/update the pre-scaled static screen background buffer
 function updateScreenBackBuffer() {
-	if (!iScreenBack || iScreenBack.width === 0) {
-		// console.warn("iScreenBack image not fully loaded, skipping buffer update.");
-		return false; // Indicate failure
+	if (!iScreenBack) {
+		console.warn("iScreenBack not loaded yet");
+		return false;
 	}
 
-	let scaledWidth,
-		scaledHeight,
-		offsetX = 0,
-		offsetY = 0;
-	let imgAspectRatio = iScreenBack.width / iScreenBack.height;
-	let canvasAspectRatio = width / height;
-
-	if (imgAspectRatio < canvasAspectRatio) {
-		// Image is wider than canvas aspect ratio, fit by width, letterbox top/bottom
-		scaledWidth = width;
-		scaledHeight = width / imgAspectRatio;
-		offsetY = (height - scaledHeight) / 2;
-	} else {
-		// Image is taller than canvas aspect ratio (or same), fit by height, letterbox left/right
-		scaledHeight = height;
-		scaledWidth = height * imgAspectRatio;
-		offsetX = (width - scaledWidth) / 2;
-	}
-
-	if (
-		gScreenBack &&
-		(gScreenBack.width !== width || gScreenBack.height !== height)
-	) {
-		gScreenBack.remove();
-		gScreenBack = null;
-	}
-
+	// Create buffer if it doesn't exist
 	if (!gScreenBack) {
 		gScreenBack = createGraphics(width, height);
-		// console.log(`Creating gScreenBack: ${width}x${height}`);
-		// Optional: Clear the buffer if there might be letterboxing and you want a specific color
-		// gScreenBack.background(0); // Or any other color for letterbox areas
 	}
 
-	// Draw the iScreenBack onto the gScreenBack buffer, scaled and centered
-	gScreenBack.image(iScreenBack, offsetX, offsetY, scaledWidth, scaledHeight);
+	// Clear the buffer
+	gScreenBack.clear();
 
-	return true; // Indicate success
+	// Calculate height to maintain aspect ratio
+	let imgHeight = (width * iScreenBack.height) / iScreenBack.width;
+
+	// Draw the image scaled to fit width while maintaining aspect ratio
+	gScreenBack.image(iScreenBack, 0, 0, width, imgHeight);
+
+	return true;
 }
