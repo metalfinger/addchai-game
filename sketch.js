@@ -48,8 +48,14 @@ let iInstruction;
 let iLeftArrow;
 let iSelectPlayerBtn;
 
+// Video variables
+let introVideo;
+let victoryVideo;
+let videoLoaded = false;
+let victoryVideoLoaded = false;
+
 // Game state
-let currentScreen = "characterSelect"; // 'characterSelect', 'screen2', 'screen3', 'game', or 'gameOver'
+let currentScreen = "welcome"; // 'welcome', 'intro', 'characterSelect', 'screen2', 'screen3', 'game', or 'gameOver'
 let currentCharacter = 0;
 let gameResult = ""; // "victory" or "defeat" to track the game result
 const TOTAL_CHARACTERS = 10;
@@ -69,7 +75,7 @@ const characterNames = [
 // Screen transition variables
 let isTransitioning = false;
 let fadeAlpha = 0;
-let FADE_SPEED = 0.05;
+let FADE_SPEED = 0.08; // Increased speed for quicker transitions
 let targetScreen = "";
 
 // Debug mode for collision boxes
@@ -126,7 +132,7 @@ const defaultFireRate = 1000;
 
 let gameStartTime = 0;
 let gameEndTime = 0;
-let lastGameDuration = 0;
+let lastGameDuration = 95000; // 1 minute 35 seconds for demo
 
 let monsterFireRate = 1000; // Initial monster fire rate in ms
 let monsterLastFired = 0;
@@ -202,11 +208,71 @@ function preload() {
 	iInstruction = loadImage("asset/map/screens/instruction.png");
 	iLeftArrow = loadImage("asset/map/screens/left_arrow.png");
 	iSelectPlayerBtn = loadImage("asset/map/screens/select_player_btn.png");
+
+	// Load intro video
+	introVideo = createVideo(["asset/video/prevideo_web.mp4"]);
+	introVideo.hide(); // Hide the video element from the DOM
+	introVideo.volume(0); // Mute the video to allow autoplay
+	introVideo.elt.muted = true; // Set muted attribute for browser autoplay policy
+
+	// Set up video event listeners using DOM events
+	introVideo.elt.addEventListener("ended", () => {
+		console.log("Intro video ended");
+		startTransition("characterSelect");
+	});
+
+	introVideo.elt.addEventListener("canplaythrough", () => {
+		videoLoaded = true;
+		console.log("Intro video loaded and ready to play");
+	});
+
+	introVideo.elt.addEventListener("loadeddata", () => {
+		if (!videoLoaded) {
+			videoLoaded = true;
+			console.log("Intro video loaded via loadeddata event");
+		}
+	});
+
+	// Load victory video
+	victoryVideo = createVideo(["asset/video/postvideo_web.mp4"]);
+	victoryVideo.hide(); // Hide the video element from the DOM
+	victoryVideo.volume(0); // Mute the video to allow autoplay
+	victoryVideo.elt.muted = true; // Set muted attribute for browser autoplay policy
+	victoryVideo.elt.loop = true; // Loop the victory video
+
+	// Set up victory video event listeners
+	victoryVideo.elt.addEventListener("canplaythrough", () => {
+		victoryVideoLoaded = true;
+		console.log("Victory video loaded and ready to play");
+	});
+
+	victoryVideo.elt.addEventListener("loadeddata", () => {
+		if (!victoryVideoLoaded) {
+			victoryVideoLoaded = true;
+			console.log("Victory video loaded via loadeddata event");
+		}
+	});
 }
 
 function setup() {
 	console.log("Setup started");
-	createCanvas(windowWidth, (windowWidth * 9) / 16);
+
+	// Calculate canvas size to fit window while maintaining 16:9 aspect ratio
+	let targetAspectRatio = 16 / 9;
+	let windowAspectRatio = windowWidth / windowHeight;
+
+	let canvasWidth, canvasHeight;
+	if (windowAspectRatio > targetAspectRatio) {
+		// Window is wider than 16:9, fit by height
+		canvasHeight = windowHeight;
+		canvasWidth = canvasHeight * targetAspectRatio;
+	} else {
+		// Window is taller than or equal to 16:9, fit by width
+		canvasWidth = windowWidth;
+		canvasHeight = canvasWidth / targetAspectRatio;
+	}
+
+	createCanvas(canvasWidth, canvasHeight);
 
 	// Set default font
 	textFont("VT323");
@@ -251,15 +317,8 @@ function setup() {
 
 	iAddChaiImg = loadImage("asset/addchai.png");
 
-	// Start character select music
-	if (bgMusic1) {
-		try {
-			bgMusic1.setVolume(0.5);
-			bgMusic1.loop();
-		} catch (error) {
-			console.log("Error initializing music:", error);
-		}
-	}
+	// Don't start character select music immediately - wait for intro to finish
+	// The music will start when we transition to character select screen
 	screenBackBufferInitialized = updateScreenBackBuffer(); // Initialize static background buffer
 	if (!screenBackBufferInitialized) {
 		console.warn(
@@ -278,9 +337,39 @@ function draw() {
 	if (isTransitioning) {
 		handleTransition();
 	} else {
-		if (currentScreen === "characterSelect") {
+		if (currentScreen === "welcome") {
+			drawWelcome();
+		} else if (currentScreen === "intro") {
+			drawIntro();
+			// Ensure background music is playing during intro (since video has no audio)
+			if (bgMusic2 && bgMusic2.isPlaying()) {
+				bgMusic2.stop();
+			}
+			if (bgMusic1 && !bgMusic1.isPlaying()) {
+				try {
+					bgMusic1.loop();
+				} catch (error) {
+					console.log("Error starting music during intro:", error);
+				}
+			}
+			// Fade in background music during intro
+			if (bgMusic1 && millis() - lastVolumeUpdate > VOLUME_UPDATE_INTERVAL) {
+				try {
+					let targetVolume = audioLevels.characterSelect;
+					let currentVolume = bgMusic1.getVolume();
+					if (currentVolume < targetVolume) {
+						bgMusic1.setVolume(
+							Math.min(targetVolume, currentVolume + audioLevels.fadeSpeed)
+						);
+						lastVolumeUpdate = millis();
+					}
+				} catch (error) {
+					console.log("Error updating volume during intro:", error);
+				}
+			}
+		} else if (currentScreen === "characterSelect") {
 			drawCharacterSelect();
-			// Ensure only bgMusic1 is playing
+			// Ensure only bgMusic1 is playing (continue from intro)
 			if (bgMusic2 && bgMusic2.isPlaying()) {
 				bgMusic2.stop();
 			}
@@ -291,7 +380,7 @@ function draw() {
 					console.log("Error starting music:", error);
 				}
 			}
-			// Fade in character select music
+			// Continue fading in music if needed
 			if (bgMusic1 && millis() - lastVolumeUpdate > VOLUME_UPDATE_INTERVAL) {
 				try {
 					let targetVolume = audioLevels.characterSelect;
@@ -497,8 +586,170 @@ function drawNavigationArrows() {
 	rightArrowOffset = lerp(rightArrowOffset, 0, ARROW_ANIMATION_SPEED);
 }
 
+function drawIntro() {
+	background(0);
+
+	if (introVideo && videoLoaded) {
+		// Start playing the video if it hasn't started yet
+		if (introVideo.elt.paused && introVideo.elt.currentTime === 0) {
+			try {
+				introVideo.play();
+				console.log("Starting intro video");
+			} catch (error) {
+				console.log(
+					"Video autoplay failed, but that's okay - user can click to start"
+				);
+			}
+		}
+
+		// Calculate dimensions to maintain aspect ratio and center the video
+		let videoAspectRatio = introVideo.width / introVideo.height;
+		let canvasAspectRatio = width / height;
+		let drawWidth, drawHeight, x, y;
+
+		if (videoAspectRatio > canvasAspectRatio) {
+			// Video is wider than canvas, fit by width
+			drawWidth = width;
+			drawHeight = width / videoAspectRatio;
+			x = 0;
+			y = (height - drawHeight) / 2;
+		} else {
+			// Video is taller than canvas, fit by height
+			drawHeight = height;
+			drawWidth = height * videoAspectRatio;
+			x = (width - drawWidth) / 2;
+			y = 0;
+		}
+
+		// Draw the video
+		image(introVideo, x, y, drawWidth, drawHeight);
+
+		// Show skip instructions or play instructions if video is paused
+		fill(255, 255, 255, 200);
+		textAlign(RIGHT, BOTTOM);
+		textSize(unit * 0.3);
+		if (introVideo.elt.paused) {
+			text(
+				"Click to start video or press SPACE to skip",
+				width - unit * 0.5,
+				height - unit * 0.3
+			);
+		} else {
+			text(
+				"Press SPACE or click to skip",
+				width - unit * 0.5,
+				height - unit * 0.3
+			);
+		}
+	} else {
+		// Show loading message
+		fill(255);
+		textAlign(CENTER, CENTER);
+		textSize(unit * 0.8);
+		text("Loading...", width / 2, height / 2);
+
+		// Show loading animation
+		let loadingDots = ".".repeat(floor((millis() / 500) % 4));
+		textSize(unit * 0.5);
+		text(loadingDots, width / 2, height / 2 + unit);
+
+		// Auto-start video when loaded
+		if (introVideo && !videoLoaded && introVideo.elt.readyState >= 3) {
+			videoLoaded = true;
+			console.log("Video ready to play");
+		}
+	}
+}
+
+function drawWelcome() {
+	background(0);
+
+	// Attempt to initialize static screen background buffer if not already done
+	if (!screenBackBufferInitialized) {
+		screenBackBufferInitialized = updateScreenBackBuffer();
+	}
+
+	// Attempt to initialize clouds buffer if not already done
+	if (!cloudsBufferInitialized) {
+		cloudsBufferInitialized = updateCloudsBuffer();
+	}
+
+	// Draw animated background
+	if (gScreenBack) {
+		image(gScreenBack, 0, 0);
+	}
+
+	// Draw animated clouds for visual appeal
+	drawClouds();
+
+	// Add a subtle dark overlay for better text readability
+	fill(0, 0, 0, 120);
+	rect(0, 0, width, height);
+
+	// Main title
+	fill(255);
+	textAlign(CENTER, CENTER);
+	textSize(unit * 1.5);
+	stroke(0);
+	strokeWeight(unit * 0.08);
+	text("ADDCHAI GAME", width / 2, height / 2 - unit * 1.5);
+	noStroke();
+
+	// Subtitle/instruction
+	textSize(unit * 0.8);
+	fill(255, 255, 0);
+	stroke(0);
+	strokeWeight(unit * 0.05);
+	text("Click to Start", width / 2, height / 2);
+	noStroke();
+
+	// Additional info
+	textSize(unit * 0.4);
+	fill(200, 200, 200);
+	text("Audio and video will be enabled", width / 2, height / 2 + unit);
+
+	// Pulsing effect for "Click to Start"
+	let pulseAlpha = 150 + 105 * sin(millis() * 0.005);
+	fill(255, 255, 255, pulseAlpha);
+	textSize(unit * 0.3);
+	text("🎮 Click anywhere to continue 🎮", width / 2, height - unit * 1.5);
+}
+
 function mousePressed() {
-	if (currentScreen === "characterSelect" && !isTransitioning) {
+	if (currentScreen === "welcome" && !isTransitioning) {
+		// Initialize audio context and start the game
+		if (getAudioContext().state !== "running") {
+			userStartAudio()
+				.then(() => {
+					console.log("Audio context started successfully");
+				})
+				.catch((error) => {
+					console.log("Audio context start failed:", error);
+				});
+		}
+		startTransition("intro");
+	} else if (currentScreen === "intro" && !isTransitioning) {
+		if (introVideo) {
+			// If video is paused (due to autoplay restrictions), try to start it first
+			if (introVideo.elt.paused) {
+				try {
+					introVideo.play();
+					console.log("User clicked - starting video");
+				} catch (error) {
+					// If still can't play, skip to character select
+					console.log("Can't play video, skipping to character select");
+					introVideo.stop();
+					startTransition("characterSelect");
+				}
+			} else {
+				// Video is playing, so skip it
+				introVideo.stop();
+				startTransition("characterSelect");
+			}
+		} else {
+			startTransition("characterSelect");
+		}
+	} else if (currentScreen === "characterSelect" && !isTransitioning) {
 		// Check if left arrow was clicked
 		if (
 			iLeftArrow && // Ensure image is loaded
@@ -541,7 +792,28 @@ function mousePressed() {
 }
 
 function keyPressed() {
-	if (currentScreen === "characterSelect" && !isTransitioning) {
+	if (currentScreen === "welcome" && !isTransitioning) {
+		// Any key starts the game (same as mouse click)
+		if (getAudioContext().state !== "running") {
+			userStartAudio()
+				.then(() => {
+					console.log("Audio context started successfully");
+				})
+				.catch((error) => {
+					console.log("Audio context start failed:", error);
+				});
+		}
+		startTransition("intro");
+	} else if (currentScreen === "intro" && !isTransitioning) {
+		// Skip intro video on SPACE or ENTER key
+		if (keyCode === 32 || keyCode === ENTER) {
+			// 32 is SPACE
+			if (introVideo) {
+				introVideo.stop();
+			}
+			startTransition("characterSelect");
+		}
+	} else if (currentScreen === "characterSelect" && !isTransitioning) {
 		if (keyCode === LEFT_ARROW) {
 			currentCharacter =
 				(currentCharacter - 1 + TOTAL_CHARACTERS) % TOTAL_CHARACTERS;
@@ -563,6 +835,12 @@ function keyPressed() {
 		startTransition("game");
 	} else if (currentScreen === "gameOver" && !isTransitioning) {
 		if (keyCode === ENTER) {
+			// Stop victory video if it's playing
+			if (victoryVideo && !victoryVideo.elt.paused) {
+				victoryVideo.stop();
+				console.log("Stopped victory video");
+			}
+
 			// Reset core game play elements for a new game
 			p.health = 3;
 			m.health = 10;
@@ -594,7 +872,22 @@ function keyPressed() {
 }
 
 function windowResized() {
-	resizeCanvas(windowWidth, (windowWidth * 9) / 16);
+	// Calculate canvas size to fit window while maintaining 16:9 aspect ratio
+	let targetAspectRatio = 16 / 9;
+	let windowAspectRatio = windowWidth / windowHeight;
+
+	let canvasWidth, canvasHeight;
+	if (windowAspectRatio > targetAspectRatio) {
+		// Window is wider than 16:9, fit by height
+		canvasHeight = windowHeight;
+		canvasWidth = canvasHeight * targetAspectRatio;
+	} else {
+		// Window is taller than or equal to 16:9, fit by width
+		canvasWidth = windowWidth;
+		canvasHeight = canvasWidth / targetAspectRatio;
+	}
+
+	resizeCanvas(canvasWidth, canvasHeight);
 
 	unit = width / 16;
 	cloudSpeed = -unit / 2000; // Update cloudSpeed here to be consistent with setup
@@ -1097,78 +1390,140 @@ function drawCoolDownArc() {
 
 function drawGameOver() {
 	noStroke(); // Prevent outlines
-	background(0);
 
-	// Attempt to initialize static screen background buffer if not already done
-	if (!screenBackBufferInitialized) {
-		screenBackBufferInitialized = updateScreenBackBuffer();
-		if (screenBackBufferInitialized) {
-			console.log(
-				"ScreenBack buffer successfully initialized from drawGameOver."
-			);
-		}
-	}
-
-	// Draw background
-	if (gScreenBack) {
-		image(gScreenBack, 0, 0);
-	}
-
-	// Draw animated clouds
-	drawClouds();
-
-	// Draw win/lose message with outline
-	textAlign(CENTER, CENTER);
-	textSize(unit * 2);
-
-	// Draw text outline
-	stroke(0);
-	strokeWeight(unit * 0.1);
 	if (gameResult === "victory") {
-		fill(0, 255, 0);
-		text("VICTORY!", width / 2, height / 2 - unit * 2);
-	} else {
-		fill(255, 0, 0);
-		text("GAME OVER", width / 2, height / 2 - unit * 2);
-	}
-	noStroke();
+		// Victory screen with video background
+		background(0);
 
-	// Draw time spent
-	if (lastGameDuration > 0) {
+		if (victoryVideo && victoryVideoLoaded) {
+			// Start playing the victory video if it hasn't started yet
+			if (victoryVideo.elt.paused) {
+				try {
+					victoryVideo.play();
+					console.log("Starting victory video");
+				} catch (error) {
+					console.log("Victory video autoplay failed:", error);
+				}
+			}
+
+			// Calculate dimensions to maintain aspect ratio and center the video
+			let videoAspectRatio = victoryVideo.width / victoryVideo.height;
+			let canvasAspectRatio = width / height;
+			let drawWidth, drawHeight, x, y;
+
+			if (videoAspectRatio > canvasAspectRatio) {
+				// Video is wider than canvas, fit by width
+				drawWidth = width;
+				drawHeight = width / videoAspectRatio;
+				x = 0;
+				y = (height - drawHeight) / 2;
+			} else {
+				// Video is taller than canvas, fit by height
+				drawHeight = height;
+				drawWidth = height * videoAspectRatio;
+				x = (width - drawWidth) / 2;
+				y = 0;
+			}
+
+			// Draw the victory video as background
+			image(victoryVideo, x, y, drawWidth, drawHeight);
+		} else {
+			// Fallback to static background if video not loaded
+			if (!screenBackBufferInitialized) {
+				screenBackBufferInitialized = updateScreenBackBuffer();
+			}
+			if (gScreenBack) {
+				image(gScreenBack, 0, 0);
+			}
+			drawClouds();
+		}
+
+		// Draw semi-transparent overlay for better text visibility
+		// fill(0, 0, 0, 150);
+		// rect(width / 2 - unit * 4, height / 2 - unit * 2.5, unit * 8, unit * 4);
+
+		// Draw victory text and score in center with strong outline for visibility
+		textAlign(CENTER, CENTER);
+
 		let seconds = floor(lastGameDuration / 1000);
 		let minutes = floor(seconds / 60);
 		let displaySeconds = seconds % 60;
 		let timeStr = nf(minutes, 2) + ":" + nf(displaySeconds, 2);
-		textSize(unit * 0.7);
-		// Draw time text outline
+
+		// Victory title
+		textSize(unit * 1);
 		stroke(0);
-		strokeWeight(unit * 0.05);
+		strokeWeight(unit * 0.2);
 		fill(255, 255, 0);
-		text("Time: " + timeStr, width / 2, height / 2 - unit);
+		text("Time: " + timeStr, width / 2, unit * 0.5);
 		noStroke();
+	} else {
+		// Defeat screen with static background
+		background(0);
+
+		// Attempt to initialize static screen background buffer if not already done
+		if (!screenBackBufferInitialized) {
+			screenBackBufferInitialized = updateScreenBackBuffer();
+			if (screenBackBufferInitialized) {
+				console.log(
+					"ScreenBack buffer successfully initialized from drawGameOver."
+				);
+			}
+		}
+
+		// Draw background
+		if (gScreenBack) {
+			image(gScreenBack, 0, 0);
+		}
+
+		// Draw animated clouds
+		drawClouds();
+
+		// Draw defeat message with outline
+		textAlign(CENTER, CENTER);
+		textSize(unit * 2);
+		stroke(0);
+		strokeWeight(unit * 0.1);
+		fill(255, 0, 0);
+		text("GAME OVER", width / 2, height / 2 - unit * 2);
+		noStroke();
+
+		// Draw time spent
+		if (lastGameDuration > 0) {
+			let seconds = floor(lastGameDuration / 1000);
+			let minutes = floor(seconds / 60);
+			let displaySeconds = seconds % 60;
+			let timeStr = nf(minutes, 2) + ":" + nf(displaySeconds, 2);
+			textSize(unit * 0.7);
+			stroke(0);
+			strokeWeight(unit * 0.05);
+			fill(255, 255, 0);
+			text("Time: " + timeStr, width / 2, height / 2 - unit);
+			noStroke();
+		}
+
+		// Draw selected character for defeat screen
+		if (characterSheet) {
+			let charWidth = 400; // Original character width in sprite sheet
+			let charHeight = characterSheet.height;
+			let displayWidth = unit * 2;
+			let displayHeight = (displayWidth * charHeight) / charWidth;
+
+			image(
+				characterSheet,
+				width / 2 - displayWidth / 2,
+				height / 2 + unit / 3,
+				displayWidth,
+				displayHeight,
+				p.characterIndex * charWidth,
+				0,
+				charWidth,
+				charHeight
+			);
+		}
 	}
 
-	// Draw selected character
-	if (characterSheet && gameResult === "victory") {
-		let charWidth = 400; // Original character width in sprite sheet
-		let charHeight = characterSheet.height;
-		let displayWidth = unit * 2;
-		let displayHeight = (displayWidth * charHeight) / charWidth;
-
-		image(
-			characterSheet,
-			width / 2 - displayWidth / 2,
-			height / 2 + unit / 3,
-			displayWidth,
-			displayHeight,
-			p.characterIndex * charWidth,
-			0,
-			charWidth,
-			charHeight
-		);
-	}
-
-	// Draw restart instruction at bottom with outline
+	// Draw restart instruction at bottom with outline (for both victory and defeat)
 	textSize(unit * 0.5);
 	stroke(0);
 	strokeWeight(unit * 0.05);
@@ -1178,38 +1533,52 @@ function drawGameOver() {
 }
 
 function handleTransition() {
-	// Draw the current screen first (before transition)
-	if (FADE_SPEED > 0) {
-		// Fading out
-		if (currentScreen === "characterSelect") {
-			drawCharacterSelect();
-		} else if (currentScreen === "screen2") {
-			drawScreen2();
-		} else if (currentScreen === "screen3") {
-			drawScreen3();
-		} else if (currentScreen === "gameOver") {
-			drawGameOver();
-		} else {
-			drawGame();
-		}
+	// For a cleaner transition, just show black during the fade
+	if (fadeAlpha > 128) {
+		// Middle of transition - show solid black
+		background(0);
 	} else {
-		// Fading in
-		if (targetScreen === "characterSelect") {
-			drawCharacterSelect();
-		} else if (targetScreen === "screen2") {
-			drawScreen2();
-		} else if (targetScreen === "screen3") {
-			drawScreen3();
-		} else if (targetScreen === "gameOver") {
-			drawGameOver();
+		// Draw the appropriate screen based on transition direction
+		if (FADE_SPEED > 0) {
+			// Fading out - draw current screen
+			if (currentScreen === "welcome") {
+				drawWelcome();
+			} else if (currentScreen === "intro") {
+				drawIntro();
+			} else if (currentScreen === "characterSelect") {
+				drawCharacterSelect();
+			} else if (currentScreen === "screen2") {
+				drawScreen2();
+			} else if (currentScreen === "screen3") {
+				drawScreen3();
+			} else if (currentScreen === "gameOver") {
+				drawGameOver();
+			} else {
+				drawGame();
+			}
 		} else {
-			drawGame();
+			// Fading in - draw target screen
+			if (targetScreen === "welcome") {
+				drawWelcome();
+			} else if (targetScreen === "intro") {
+				drawIntro();
+			} else if (targetScreen === "characterSelect") {
+				drawCharacterSelect();
+			} else if (targetScreen === "screen2") {
+				drawScreen2();
+			} else if (targetScreen === "screen3") {
+				drawScreen3();
+			} else if (targetScreen === "gameOver") {
+				drawGameOver();
+			} else {
+				drawGame();
+			}
 		}
-	}
 
-	// Draw fade overlay
-	fill(0, fadeAlpha);
-	rect(0, 0, width, height);
+		// Draw fade overlay only when not fully black
+		fill(0, fadeAlpha);
+		rect(0, 0, width, height);
+	}
 
 	// Fade out
 	if (FADE_SPEED > 0 && fadeAlpha < 255) {
@@ -1219,6 +1588,19 @@ function handleTransition() {
 		let screenWeCameFrom = currentScreen; // Capture the screen we are transitioning FROM
 		currentScreen = targetScreen;
 		fadeAlpha = 255;
+
+		// If transitioning to intro screen, start background music
+		if (currentScreen === "intro" && screenWeCameFrom === "welcome") {
+			if (bgMusic1) {
+				try {
+					bgMusic1.setVolume(0.5);
+					bgMusic1.loop();
+					console.log("Started background music during intro video");
+				} catch (error) {
+					console.log("Error starting background music:", error);
+				}
+			}
+		}
 
 		// If the new screen is the game screen, prepare for a new game session
 		if (currentScreen === "game") {
