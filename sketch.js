@@ -55,9 +55,9 @@ let videoLoaded = false;
 let victoryVideoLoaded = false;
 
 // Game state
-let currentScreen = "gameOver"; // 'welcome', 'intro', 'characterSelect', 'screen2', 'screen3', 'game', or 'gameOver'
+let currentScreen = "welcome"; // 'welcome', 'intro', 'characterSelect', 'screen2', 'screen3', 'game', or 'gameOver'
 let currentCharacter = 0;
-let gameResult = "victory"; // "victory" or "defeat" to track the game result
+let gameResult = ""; // "victory" or "defeat" to track the game result
 const TOTAL_CHARACTERS = 10;
 const characterNames = [
 	"Warrior",
@@ -89,7 +89,7 @@ let audioLevels = {
 };
 
 let lastVolumeUpdate = 0;
-const VOLUME_UPDATE_INTERVAL = 50; // Update volume every 50ms
+const VOLUME_UPDATE_INTERVAL = 200; // Update volume every 200ms (reduced frequency for better performance)
 
 // Navigation and button positions
 let LEFT_ARROW_X;
@@ -1384,6 +1384,9 @@ function windowResized() {
 function drawGame() {
 	noStroke(); // Prevent outlines
 
+	// Cache millis() call for performance - only call once per frame
+	let currentTime = millis();
+
 	// Attempt to initialize static screen background buffer if not already done
 	if (!screenBackBufferInitialized) {
 		screenBackBufferInitialized = updateScreenBackBuffer();
@@ -1448,14 +1451,14 @@ function drawGame() {
 
 	// Monster shooting logic
 	if (
-		millis() - monsterLastFired > monsterFireRate &&
+		currentTime - monsterLastFired > monsterFireRate &&
 		m.health > 0 &&
 		currentScreen === "game"
 	) {
 		let flameSpeed = random(unit / 40, unit / 20); // Adjusted for unit-relativity
 		let mf = new MonsterFlame(m.x - unit * 2, m.y, flameSpeed);
 		mFlameArray.push(mf);
-		monsterLastFired = millis();
+		monsterLastFired = currentTime;
 		if (monsterShootSound) monsterShootSound.play();
 	}
 
@@ -1577,7 +1580,7 @@ function drawGame() {
 		// Check for collision with player
 		if (checkCollision(addChaiArray[i], p)) {
 			fireRate = 300;
-			shootingPowerupTimer = millis();
+			shootingPowerupTimer = currentTime;
 			removeAddChaiIndex = i;
 			console.log(i);
 			break;
@@ -1592,7 +1595,7 @@ function drawGame() {
 	// Check if shooting power-up should expire
 	if (
 		shootingPowerupTimer > 0 &&
-		millis() - shootingPowerupTimer > shootingPowerupDuration
+		currentTime - shootingPowerupTimer > shootingPowerupDuration
 	) {
 		fireRate = defaultFireRate;
 		shootingPowerupTimer = 0;
@@ -1603,7 +1606,7 @@ function drawGame() {
 		let indicatorX = POWERUP_INDICATOR_X;
 		let indicatorY = POWERUP_INDICATOR_Y;
 		let indicatorSize = POWERUP_INDICATOR_SIZE;
-		let elapsed = millis() - shootingPowerupTimer;
+		let elapsed = currentTime - shootingPowerupTimer;
 		let fraction = 1 - elapsed / shootingPowerupDuration;
 		let startAngle = -HALF_PI;
 		let endAngle = startAngle + fraction * TWO_PI;
@@ -1738,7 +1741,7 @@ function drawGame() {
 	// Game timer logic
 	let currentGameTime = 0;
 	if (gameStartTime > 0 && gameEndTime === 0) {
-		currentGameTime = millis() - gameStartTime;
+		currentGameTime = currentTime - gameStartTime;
 	} else if (gameEndTime > 0) {
 		currentGameTime = gameEndTime - gameStartTime;
 	}
@@ -1756,14 +1759,14 @@ function drawGame() {
 	// Check for game over (player or monster health)
 	if (m.health <= 0) {
 		if (gameEndTime === 0) {
-			gameEndTime = millis();
+			gameEndTime = currentTime;
 			lastGameDuration = gameEndTime - gameStartTime;
 		}
 		gameResult = "victory";
 		currentScreen = "gameOver";
 	} else if (p.health <= 0) {
 		if (gameEndTime === 0) {
-			gameEndTime = millis();
+			gameEndTime = currentTime;
 			lastGameDuration = gameEndTime - gameStartTime;
 		}
 		gameResult = "defeat";
@@ -2267,6 +2270,7 @@ class MonsterFlame {
 		this.hh = this.ww * 0.45;
 		this.size = this.ww;
 		this.collisionDiameter = this.ww * 0.8; // Added collisionDiameter
+		this.active = true; // Add active flag for object pooling
 	}
 
 	updateThis(x, y) {
@@ -2275,6 +2279,8 @@ class MonsterFlame {
 	}
 
 	drawThis() {
+		if (!this.active) return; // Skip inactive objects
+
 		this.ww = unit / 1;
 		this.hh = this.ww * 0.45;
 		this.size = this.ww; // Collision size for MonsterFlame is its width
@@ -2296,6 +2302,11 @@ class MonsterFlame {
 		image(iFlame, this.x - this.ww / 2, this.y - this.hh / 2, this.ww, this.hh);
 
 		this.x -= this.speed;
+
+		// Auto-deactivate when off screen
+		if (this.y > height) {
+			this.active = false;
+		}
 	}
 }
 
@@ -2308,6 +2319,7 @@ class Weapon {
 		this.hh = this.ww / 2;
 		this.size = this.hh; // Corrected: was this.ww, now consistent with drawThis logic for collision
 		this.collisionDiameter = this.ww * 2; // Added collisionDiameter
+		this.active = true; // Add active flag for object pooling
 	}
 
 	updateThis(x, y) {
@@ -2390,6 +2402,7 @@ class Blast {
 		this.life = 20; // Duration of the blast
 		this.currentLife = this.life;
 		this.collisionDiameter = this.size; // Added collisionDiameter, might not be relevant if blast doesn't collide
+		this.active = true; // Add active flag for object pooling
 	}
 
 	drawThis() {
@@ -2418,6 +2431,7 @@ class AddChai {
 		this.life = 400;
 		this.currentLife = this.life;
 		this.collisionDiameter = this.size * 2.0; // Added collisionDiameter (size is radius)
+		this.active = true; // Add active flag for object pooling
 	}
 
 	drawThis() {
