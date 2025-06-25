@@ -51,6 +51,7 @@ let iSelectPlayerBtn;
 // Video variables
 let introVideo;
 let victoryVideo;
+let onIntroEnd; // To hold a reference to the 'ended' event handler
 let videoLoaded = false;
 let victoryVideoLoaded = false;
 
@@ -233,10 +234,15 @@ function preload() {
 	introVideo.elt.muted = true; // Set muted attribute for browser autoplay policy
 
 	// Set up video event listeners using DOM events
-	introVideo.elt.addEventListener("ended", () => {
+	onIntroEnd = () => {
 		console.log("Intro video ended");
 		startTransition("characterSelect");
-	});
+		// It's good practice to remove the listener once it's fired.
+		if (introVideo && onIntroEnd) {
+			introVideo.elt.removeEventListener("ended", onIntroEnd);
+		}
+	};
+	introVideo.elt.addEventListener("ended", onIntroEnd);
 
 	introVideo.elt.addEventListener("canplaythrough", () => {
 		videoLoaded = true;
@@ -1204,11 +1210,17 @@ function mousePressed() {
 					// If still can't play, skip to character select
 					console.log("Can't play video, skipping to character select");
 					introVideo.stop();
+					if (onIntroEnd) {
+						introVideo.elt.removeEventListener("ended", onIntroEnd);
+					}
 					startTransition("characterSelect");
 				}
 			} else {
 				// Video is playing, so skip it
 				introVideo.stop();
+				if (onIntroEnd) {
+					introVideo.elt.removeEventListener("ended", onIntroEnd);
+				}
 				startTransition("characterSelect");
 			}
 		} else {
@@ -1275,6 +1287,9 @@ function keyPressed() {
 			// 32 is SPACE
 			if (introVideo) {
 				introVideo.stop();
+				if (onIntroEnd) {
+					introVideo.elt.removeEventListener("ended", onIntroEnd);
+				}
 			}
 			startTransition("characterSelect");
 		}
