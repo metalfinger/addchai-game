@@ -1,5 +1,13 @@
 @import url("https://fonts.googleapis.com/css2?family=VT323&display=swap");
 
+:root {
+	/* CSS variables for responsive design - updated by JavaScript */
+	--unit: 60px; /* Default unit size, will be updated based on screen size */
+	--form-font-size: calc(var(--unit) * 0.3);
+	--form-input-height: calc(var(--unit) * 0.6);
+	--form-spacing: calc(var(--unit) * 0.4);
+}
+
 body {
 	margin: 0;
 	padding: 0;
@@ -21,4 +29,132 @@ main {
 
 canvas {
 	display: block;
+}
+
+/* Score Submission Form Styles */
+.score-input {
+	font-family: "VT323", monospace;
+	font-size: var(--form-font-size);
+	background-color: #2a2a3a;
+	color: #ffffff;
+	border: 2px solid #ffd700;
+	border-radius: 6px;
+	padding: 6px;
+	text-align: center;
+	box-sizing: border-box;
+	outline: none;
+	transition: all 0.3s ease;
+	top: 52vh !important;
+
+	/* Remove default input styling */
+
+	-webkit-appearance: none;
+	-moz-appearance: none;
+	appearance: none;
+}
+
+.score-input::placeholder {
+	color: #888;
+	opacity: 0.8;
+}
+
+.score-input:focus {
+	border-color: #ffd700 !important;
+	box-shadow: 0 0 10px rgba(255, 215, 0, 0.5) !important;
+	background-color: #333;
+}
+
+.score-input:hover {
+	border-color: #ffa500;
+	background-color: #333;
+}
+
+.score-submit-btn {
+	font-family: "VT323", monospace;
+	font-size: var(--form-font-size);
+	font-weight: bold;
+	text-transform: uppercase;
+	background: linear-gradient(45deg, #ff2d2d, #ff6b6b);
+	color: white;
+	border: none;
+	border-radius: 6px;
+	cursor: pointer;
+	transition: all 0.2s ease;
+	box-sizing: border-box;
+	outline: none;
+	top: 58vh !important;
+
+	/* Remove default button styling */
+	-webkit-appearance: none;
+	-moz-appearance: none;
+	appearance: none;
+}
+
+.score-submit-btn:hover {
+	transform: translateY(-1px);
+	box-shadow: 0 3px 12px rgba(255, 45, 45, 0.3);
+	background: linear-gradient(45deg, #ff1d1d, #ff5b5b);
+}
+
+.score-submit-btn:active {
+	transform: translateY(0px);
+	box-shadow: 0 1px 6px rgba(255, 45, 45, 0.2);
+}
+
+.score-submit-btn:disabled {
+	background: linear-gradient(45deg, #666, #888);
+	cursor: not-allowed;
+	transform: none;
+	box-shadow: none;
+}
+
+.score-submit-btn:disabled:hover {
+	transform: none;
+	box-shadow: none;
+	background: linear-gradient(45deg, #666, #888);
+}
+
+/* Animation classes for enhanced UX */
+.score-input.success {
+	border-color: #00ff00;
+	box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+}
+
+.score-input.error {
+	border-color: #ff0000;
+	box-shadow: 0 0 10px rgba(255, 0, 0, 0.5);
+	animation: shake 0.3s ease-in-out;
+}
+
+@keyframes shake {
+	0%,
+	100% {
+		transform: translateX(0);
+	}
+	25% {
+		transform: translateX(-5px);
+	}
+	75% {
+		transform: translateX(5px);
+	}
+}
+
+/* Responsive adjustments for very small screens */
+@media (max-width: 480px) {
+	:root {
+		--form-font-size: calc(var(--unit) * 0.25);
+	}
+
+	.score-input,
+	.score-submit-btn {
+		border-radius: 4px;
+		padding: 4px;
+	}
+}
+
+/* Responsive adjustments for very large screens */
+@media (min-width: 1920px) {
+	:root {
+		--form-font-size: calc(var(--unit) * 0.35);
+	}
 }

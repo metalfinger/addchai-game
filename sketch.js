@@ -55,9 +55,9 @@ let videoLoaded = false;
 let victoryVideoLoaded = false;
 
 // Game state
-let currentScreen = "welcome"; // 'welcome', 'intro', 'characterSelect', 'screen2', 'screen3', 'game', or 'gameOver'
+let currentScreen = "gameOver"; // 'welcome', 'intro', 'characterSelect', 'screen2', 'screen3', 'game', or 'gameOver'
 let currentCharacter = 0;
-let gameResult = ""; // "victory" or "defeat" to track the game result
+let gameResult = "victory"; // "victory" or "defeat" to track the game result
 const TOTAL_CHARACTERS = 10;
 const characterNames = [
 	"Warrior",
@@ -218,6 +218,9 @@ function preload() {
 	monsterShootSound = loadSound("asset/audio/william-shoot.mp3");
 	boomSound = loadSound("asset/audio/boom-general.mp3");
 
+	// Load weapon image
+	iWeapon = loadImage("asset/weapon_web.png");
+
 	// Load new UI images for character select
 	iInstruction = loadImage("asset/map/screens/instruction.png");
 	iLeftArrow = loadImage("asset/map/screens/left_arrow.png");
@@ -298,6 +301,9 @@ function setup() {
 	PARALLAX_OFFSET_DOWN = -unit; // Initialize PARALLAX_OFFSET_DOWN here
 
 	updateCharacterSelectLayout(); // New function to set positions and sizes
+
+	// Update CSS variables for responsive design
+	updateFormCSSVariables();
 
 	// Initialize indicator positions and sizes
 	RELOAD_INDICATOR_X = unit;
@@ -595,15 +601,6 @@ function drawSubmissionPanel(x, y, w, h) {
 		text("Enter your name to save your time", x + w / 2, contentY - unit * 0.2);
 		text("to the leaderboard!", x + w / 2, contentY + unit * 0.1);
 
-		// Player stats
-		textSize(unit * 0.35);
-		fill(255, 215, 0);
-		text(
-			"🎯 Character: " + characterNames[p.characterIndex],
-			x + w / 2,
-			contentY + unit * 1
-		);
-
 		// Create input elements if they don't exist
 		if (!nameInput) {
 			createStyledInputElements(x, contentY, w);
@@ -649,6 +646,9 @@ function createStyledInputElements(panelX, contentY, panelWidth) {
 		unit,
 	});
 
+	// Update CSS variables for responsive design
+	updateFormCSSVariables();
+
 	// Calculate input positioning within the panel
 	let inputWidth = panelWidth * 0.8;
 	let inputHeight = unit * 0.6;
@@ -665,30 +665,11 @@ function createStyledInputElements(panelX, contentY, panelWidth) {
 	nameInput = createInput("");
 	nameInput.position(inputX, inputY);
 	nameInput.size(inputWidth, inputHeight);
-	nameInput.style("font-size", unit * 0.3 + "px");
-	nameInput.style("font-family", "VT323");
-	nameInput.style("background-color", "#2a2a3a");
-	nameInput.style("color", "#ffffff");
-	nameInput.style("border", "2px solid #FFD700");
-	nameInput.style("border-radius", "6px");
-	nameInput.style("padding", "6px");
-	nameInput.style("text-align", "center");
-	nameInput.style("box-sizing", "border-box");
+	nameInput.class("score-input"); // Use CSS class instead of inline styles
 	nameInput.attribute("placeholder", "🎮 Enter your name");
 	nameInput.attribute("maxlength", "20");
 
 	console.log("Created input element");
-
-	// Input focus styling
-	nameInput.elt.addEventListener("focus", () => {
-		nameInput.style("border-color", "#FFD700");
-		nameInput.style("box-shadow", "0 0 10px rgba(255, 215, 0, 0.5)");
-	});
-
-	nameInput.elt.addEventListener("blur", () => {
-		nameInput.style("border-color", "#555");
-		nameInput.style("box-shadow", "none");
-	});
 
 	// Submit button positioning
 	let buttonY = inputY + inputHeight + unit * 0.4;
@@ -696,51 +677,24 @@ function createStyledInputElements(panelX, contentY, panelWidth) {
 	submitButton = createButton("🚀 SUBMIT SCORE");
 	submitButton.position(inputX, buttonY);
 	submitButton.size(inputWidth, inputHeight);
-	submitButton.style("font-size", unit * 0.3 + "px");
-	submitButton.style("font-family", "VT323");
-	submitButton.style("background", "linear-gradient(45deg, #FF2D2D, #FF6B6B)");
-	submitButton.style("color", "white");
-	submitButton.style("border", "none");
-	submitButton.style("border-radius", "6px");
-	submitButton.style("cursor", "pointer");
-	submitButton.style("transition", "all 0.2s ease");
-	submitButton.style("font-weight", "bold");
-	submitButton.style("text-transform", "uppercase");
-	submitButton.style("box-sizing", "border-box");
+	submitButton.class("score-submit-btn"); // Use CSS class instead of inline styles
 
 	console.log("Created submit button");
-
-	// Button hover effects
-	submitButton.elt.addEventListener("mouseenter", () => {
-		submitButton.style("transform", "translateY(-1px)");
-		submitButton.style("box-shadow", "0 3px 12px rgba(255, 45, 45, 0.3)");
-		submitButton.style(
-			"background",
-			"linear-gradient(45deg, #FF1D1D, #FF5B5B)"
-		);
-	});
-
-	submitButton.elt.addEventListener("mouseleave", () => {
-		submitButton.style("transform", "translateY(0px)");
-		submitButton.style("box-shadow", "none");
-		submitButton.style(
-			"background",
-			"linear-gradient(45deg, #FF2D2D, #FF6B6B)"
-		);
-	});
 
 	submitButton.mousePressed(async () => {
 		let name = nameInput.value().trim();
 		if (name.length > 0) {
 			// Disable button during submission
 			submitButton.html("⏳ SUBMITTING...");
-			submitButton.style("background", "linear-gradient(45deg, #666, #888)");
 			submitButton.elt.disabled = true;
 
 			let success = await submitScore(name, lastGameDuration);
 			if (success) {
 				scoreSubmitted = true;
 				playerName = name;
+				// Add success animation
+				nameInput.addClass("success");
+
 				// Reload leaderboard to show updated rankings
 				loadLeaderboard();
 				// Remove input elements
@@ -749,16 +703,43 @@ function createStyledInputElements(panelX, contentY, panelWidth) {
 				// Play success sound if available
 				if (clickSound) clickSound.play();
 			} else {
-				// Re-enable button on failure
+				// Re-enable button on failure and show error state
 				submitButton.html("🚀 SUBMIT SCORE");
-				submitButton.style(
-					"background",
-					"linear-gradient(45deg, #FF2D2D, #FF6B6B)"
-				);
 				submitButton.elt.disabled = false;
+				nameInput.addClass("error");
+
+				// Remove error class after animation
+				setTimeout(() => {
+					if (nameInput) nameInput.removeClass("error");
+				}, 300);
 			}
+		} else {
+			// Show error for empty input
+			nameInput.addClass("error");
+			setTimeout(() => {
+				if (nameInput) nameInput.removeClass("error");
+			}, 300);
 		}
 	});
+}
+
+// New function to update CSS variables for responsive design
+function updateFormCSSVariables() {
+	if (typeof document !== "undefined") {
+		document.documentElement.style.setProperty("--unit", unit + "px");
+		document.documentElement.style.setProperty(
+			"--form-font-size",
+			unit * 0.3 + "px"
+		);
+		document.documentElement.style.setProperty(
+			"--form-input-height",
+			unit * 0.6 + "px"
+		);
+		document.documentElement.style.setProperty(
+			"--form-spacing",
+			unit * 0.4 + "px"
+		);
+	}
 }
 
 function drawRestartPrompt() {
@@ -1393,6 +1374,9 @@ function windowResized() {
 	screenBackBufferInitialized = updateScreenBackBuffer(); // Update static background buffer on resize
 	cloudsBufferInitialized = updateCloudsBuffer(); // Update clouds buffer on resize
 
+	// Update CSS variables for responsive design
+	updateFormCSSVariables();
+
 	// Clean up input elements on resize to avoid positioning issues
 	cleanupInputElements();
 }
@@ -1518,9 +1502,6 @@ function drawGame() {
 			blastArray.push(b);
 			if (boomSound) boomSound.play();
 
-			if (p.health <= 0) {
-				currentScreen = "gameOver";
-			}
 			removeFlameIndex = i;
 			break;
 		}
@@ -2327,9 +2308,6 @@ class Weapon {
 		this.hh = this.ww / 2;
 		this.size = this.hh; // Corrected: was this.ww, now consistent with drawThis logic for collision
 		this.collisionDiameter = this.ww * 2; // Added collisionDiameter
-		this.trail = []; // Array to store trail positions
-		this.trailLength = unit / 18; // Reduced from unit / 9 for optimization
-		this.trailSpacing = unit / 2; // Reduced spacing for smoother trail
 	}
 
 	updateThis(x, y) {
@@ -2354,51 +2332,51 @@ class Weapon {
 			noStroke();
 		}
 
-		// Update trail
-		this.trail.unshift({ x: this.x, y: this.y }); // Add current position to start of trail
-		if (this.trail.length > this.trailLength) {
-			this.trail.pop(); // Remove oldest position if trail is too long
+		// Draw weapon image or fallback to pixel-art style laser
+		let weaponWidth = this.ww * 1.5;
+		let weaponHeight = this.hh * 0.7;
+
+		if (iWeapon) {
+			// Use weapon image - single draw call (centered on this.x, this.y)
+			image(
+				iWeapon,
+				this.x - weaponWidth / 2, // Center horizontally
+				this.y - weaponHeight / 2, // Center vertically
+				weaponWidth,
+				weaponHeight
+			);
+		} else {
+			// Fallback to original pixel-art style laser (centered on this.x, this.y)
+			// Outer red
+			fill(255, 0, 0);
+			rect(
+				this.x - weaponWidth / 2,
+				this.y - weaponHeight / 2,
+				weaponWidth,
+				weaponHeight,
+				2
+			);
+
+			// Middle orange
+			fill(255, 140, 0);
+			rect(
+				this.x - (weaponWidth * 0.9) / 2,
+				this.y - weaponHeight / 3,
+				weaponWidth * 0.9,
+				weaponHeight / 1.5,
+				2
+			);
+
+			// Center yellow
+			fill(255, 255, 0);
+			rect(
+				this.x - (weaponWidth * 0.7) / 2,
+				this.y - weaponHeight / 6,
+				weaponWidth * 0.7,
+				weaponHeight / 3,
+				2
+			);
 		}
-
-		// Draw trail
-		noStroke();
-		for (let i = 0; i < this.trail.length; i++) {
-			// Calculate opacity based on position in trail with smoother fade
-			let opacity = map(i, 0, this.trailLength, 255, 0);
-			fill(255, 0, 0, opacity); // Red color with fading opacity
-
-			// Draw trail segment with smoother size reduction
-			let size = map(i, 0, this.trailLength, this.ww, this.ww * 0.2);
-			ellipse(this.trail[i].x, this.trail[i].y, size, size * 0.3);
-		}
-
-		// Draw pixel-art style laser (center yellow, outer red)
-		let laserLength = this.ww * 1.5; // Length of the laser beam
-		let laserHeight = this.hh * 0.7; // Height of the laser beam
-
-		// Outer red
-		fill(255, 0, 0);
-		rect(this.x, this.y - laserHeight / 2, laserLength, laserHeight, 2);
-
-		// Middle orange
-		fill(255, 140, 0);
-		rect(
-			this.x,
-			this.y - laserHeight / 3,
-			laserLength * 0.9,
-			laserHeight / 1.5,
-			2
-		);
-
-		// Center yellow
-		fill(255, 255, 0);
-		rect(
-			this.x,
-			this.y - laserHeight / 6,
-			laserLength * 0.7,
-			laserHeight / 3,
-			2
-		);
 
 		this.x += this.speed;
 	}
