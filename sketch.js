@@ -134,6 +134,15 @@ let gameStartTime = 0;
 let gameEndTime = 0;
 let lastGameDuration = 95000; // 1 minute 35 seconds for demo
 
+// Sample leaderboard data for testing (remove this in production)
+let sampleLeaderboardData = [
+	{ name: "Hiren", time: 72000 }, // 1:12
+	{ name: "Kedar", time: 85000 }, // 1:25
+	{ name: "Manav", time: 91000 }, // 1:31
+	{ name: "Jin", time: 103000 }, // 1:43
+	{ name: "Reva", time: 118000 }, // 1:58
+];
+
 let monsterFireRate = 1000; // Initial monster fire rate in ms
 let monsterLastFired = 0;
 const monsterMinFireRate = 500; // Minimum fire rate for monster
@@ -162,6 +171,11 @@ let nameInput;
 let submitButton;
 let scoreSubmitted = false;
 let playerName = "";
+
+// Leaderboard variables
+let leaderboardData = [];
+let isLoadingLeaderboard = false;
+let leaderboardLoaded = false;
 
 function preload() {
 	// Preload any assets here if needed
@@ -210,7 +224,7 @@ function preload() {
 	iSelectPlayerBtn = loadImage("asset/map/screens/select_player_btn.png");
 
 	// Load intro video
-	introVideo = createVideo(["asset/video/prevideo_web.mp4"]);
+	introVideo = createVideo(["asset/video/introvideo_web.mp4"]);
 	introVideo.hide(); // Hide the video element from the DOM
 	introVideo.volume(0); // Mute the video to allow autoplay
 	introVideo.elt.muted = true; // Set muted attribute for browser autoplay policy
@@ -333,7 +347,464 @@ function setup() {
 	}
 }
 
+// Firebase helper functions
+async function submitScore(playerName, time) {
+	try {
+		if (!window.firebaseDB) {
+			console.error("Firebase not initialized");
+			return false;
+		}
+
+		const scoresCollection = window.firebaseCollection(
+			window.firebaseDB,
+			"leaderboard"
+		);
+		await window.firebaseAddDoc(scoresCollection, {
+			name: playerName,
+			time: time,
+			timestamp: Date.now(),
+			date: new Date().toISOString(),
+		});
+		console.log("Score submitted successfully");
+		return true;
+	} catch (error) {
+		console.error("Error submitting score:", error);
+		return false;
+	}
+}
+
+async function loadLeaderboard() {
+	try {
+		if (!window.firebaseDB) {
+			console.warn("Firebase not initialized, using sample data");
+			leaderboardData = [...sampleLeaderboardData];
+			isLoadingLeaderboard = false;
+			leaderboardLoaded = true;
+			return;
+		}
+
+		isLoadingLeaderboard = true;
+		const scoresCollection = window.firebaseCollection(
+			window.firebaseDB,
+			"leaderboard"
+		);
+		const q = window.firebaseQuery(
+			scoresCollection,
+			window.firebaseOrderBy("time", "asc"),
+			window.firebaseLimit(5)
+		);
+
+		const querySnapshot = await window.firebaseGetDocs(q);
+		leaderboardData = [];
+
+		querySnapshot.forEach((doc) => {
+			leaderboardData.push(doc.data());
+		});
+
+		// If no Firebase data, use sample data
+		if (leaderboardData.length === 0) {
+			leaderboardData = [...sampleLeaderboardData];
+		}
+
+		isLoadingLeaderboard = false;
+		leaderboardLoaded = true;
+		console.log("Leaderboard loaded:", leaderboardData);
+	} catch (error) {
+		console.error("Error loading leaderboard:", error);
+		console.log("Falling back to sample data");
+		leaderboardData = [...sampleLeaderboardData];
+		isLoadingLeaderboard = false;
+		leaderboardLoaded = true;
+	}
+}
+
+function formatTime(milliseconds) {
+	let seconds = floor(milliseconds / 1000);
+	let minutes = floor(seconds / 60);
+	let displaySeconds = seconds % 60;
+	return nf(minutes, 2) + ":" + nf(displaySeconds, 2);
+}
+
+// UI Helper Functions
+function drawGlowText(txt, x, y, size, innerColor, outerColor) {
+	textAlign(CENTER, CENTER);
+	textSize(size);
+
+	// Outer glow
+	for (let r = 8; r > 0; r--) {
+		stroke(red(outerColor), green(outerColor), blue(outerColor), 30);
+		strokeWeight(r);
+		fill(red(innerColor), green(innerColor), blue(innerColor), 200);
+		text(txt, x, y);
+	}
+
+	// Inner text
+	noStroke();
+	fill(innerColor);
+	text(txt, x, y);
+}
+
+function drawTimeDisplay(timeStr, x, y) {
+	// Background panel for time
+	let panelWidth = unit * 4;
+	let panelHeight = unit * 1.2;
+
+	// Panel background with border
+	fill(30, 30, 50, 200);
+	stroke(255, 215, 0);
+	strokeWeight(3);
+	rect(
+		x - panelWidth / 2,
+		y - panelHeight / 2,
+		panelWidth,
+		panelHeight,
+		unit * 0.2
+	);
+
+	// Time text
+	noStroke();
+	textAlign(CENTER, CENTER);
+	textSize(unit * 0.6);
+	fill(255, 215, 0);
+	text("YOUR TIME", x, y - unit * 0.25);
+
+	textSize(unit * 0.8);
+	fill(255);
+	text(timeStr, x, y + unit * 0.25);
+}
+
+function drawPanel(x, y, w, h, title, titleColor) {
+	// Panel background
+	fill(20, 25, 40, 220);
+	stroke(100, 150, 200);
+	strokeWeight(2);
+	rect(x, y, w, h, unit * 0.3);
+
+	// Panel header
+	fill(30, 40, 60, 250);
+	rect(x, y, w, unit * 1.2, unit * 0.3);
+
+	// Title
+	noStroke();
+	textAlign(CENTER, CENTER);
+	textSize(unit * 0.5);
+	fill(titleColor);
+	text(title, x + w / 2, y + unit * 0.6);
+
+	return y + unit * 1.5; // Return content start Y position
+}
+
+function drawLeaderboardPanel(x, y, w, h) {
+	let contentY = drawPanel(x, y, w, h, "🏆 TOP 5 PLAYERS", color(255, 215, 0));
+
+	if (isLoadingLeaderboard) {
+		// Loading animation
+		textAlign(CENTER, CENTER);
+		textSize(unit * 0.4);
+		fill(150, 150, 255);
+		let dots = ".".repeat((millis() / 500) % 4);
+		text("Loading" + dots, x + w / 2, contentY + unit * 1.5);
+	} else if (leaderboardLoaded && leaderboardData.length > 0) {
+		// Leaderboard entries with proper spacing
+		let entryHeight = unit * 0.6;
+		let entrySpacing = unit * 0.1;
+
+		for (let i = 0; i < Math.min(5, leaderboardData.length); i++) {
+			let rank = i + 1;
+			let player = leaderboardData[i];
+			let displayTime = formatTime(player.time);
+			let entryY = contentY + unit * 0.3 + i * (entryHeight + entrySpacing);
+
+			// Medal/rank styling
+			let medalColor;
+			let medalIcon;
+			if (rank === 1) {
+				medalColor = color(255, 215, 0);
+				medalIcon = "🥇";
+			} else if (rank === 2) {
+				medalColor = color(192, 192, 192);
+				medalIcon = "🥈";
+			} else if (rank === 3) {
+				medalColor = color(205, 127, 50);
+				medalIcon = "🥉";
+			} else {
+				medalColor = color(255, 255, 255);
+				medalIcon = rank + ".";
+			}
+
+			// Entry background for top 3
+			if (rank <= 3) {
+				fill(40, 40, 60, 150);
+				rect(
+					x + unit * 0.15,
+					entryY - entryHeight / 2,
+					w - unit * 0.3,
+					entryHeight,
+					unit * 0.1
+				);
+			}
+
+			// Rank/Medal
+			textAlign(LEFT, CENTER);
+			textSize(unit * 0.3);
+			fill(medalColor);
+			text(medalIcon, x + unit * 0.3, entryY);
+
+			// Player name (truncate if too long)
+			textSize(unit * 0.32);
+			fill(255);
+			let displayName =
+				player.name.length > 12
+					? player.name.substring(0, 12) + "..."
+					: player.name;
+			text(displayName, x + unit * 0.9, entryY);
+
+			// Time
+			textAlign(RIGHT, CENTER);
+			textSize(unit * 0.3);
+			fill(150, 255, 150);
+			text(displayTime, x + w - unit * 0.3, entryY);
+		}
+	} else {
+		// No scores message
+		textAlign(CENTER, CENTER);
+		textSize(unit * 0.35);
+		fill(150, 150, 150);
+		text("🎮", x + w / 2, contentY + unit * 1);
+		text("No scores yet!", x + w / 2, contentY + unit * 1.5);
+		textSize(unit * 0.3);
+		text("Be the first to set a record!", x + w / 2, contentY + unit * 2);
+	}
+}
+
+function drawSubmissionPanel(x, y, w, h) {
+	if (!scoreSubmitted) {
+		let contentY = drawPanel(
+			x,
+			y,
+			w,
+			h,
+			"⚡ SUBMIT YOUR SCORE",
+			color(255, 100, 100)
+		);
+
+		// Instructions
+		textAlign(CENTER, TOP);
+		textSize(unit * 0.35);
+		fill(200, 200, 200);
+		text("Enter your name to save your time", x + w / 2, contentY - unit * 0.2);
+		text("to the leaderboard!", x + w / 2, contentY + unit * 0.1);
+
+		// Player stats
+		textSize(unit * 0.35);
+		fill(255, 215, 0);
+		text(
+			"🎯 Character: " + characterNames[p.characterIndex],
+			x + w / 2,
+			contentY + unit * 1
+		);
+
+		// Create input elements if they don't exist
+		if (!nameInput) {
+			createStyledInputElements(x, contentY, w);
+		}
+	} else {
+		let contentY = drawPanel(
+			x,
+			y,
+			w,
+			h,
+			"✅ SCORE SUBMITTED!",
+			color(100, 255, 100)
+		);
+
+		// Success message
+		textAlign(CENTER, CENTER);
+		textSize(unit * 0.5);
+		fill(100, 255, 100);
+		text("🎉", x + w / 2, contentY + unit * 0.4);
+
+		textSize(unit * 0.4);
+		fill(255);
+		text("Thank you, " + playerName + "!", x + w / 2, contentY + unit * 1.3);
+
+		textSize(unit * 0.35);
+		fill(200, 200, 200);
+		text("Your score has been added", x + w / 2, contentY + unit * 1.8);
+		text("to the leaderboard!", x + w / 2, contentY + unit * 2.2);
+
+		// Fun animation
+		let pulseSize = 1 + 0.1 * sin(millis() * 0.01);
+		textSize(unit * 0.6 * pulseSize);
+		fill(255, 255, 0, 150 + 105 * sin(millis() * 0.008));
+		text("⭐", x + w / 2, contentY + unit * 3);
+	}
+}
+
+function createStyledInputElements(panelX, contentY, panelWidth) {
+	console.log("Creating input elements", {
+		panelX,
+		contentY,
+		panelWidth,
+		unit,
+	});
+
+	// Calculate input positioning within the panel
+	let inputWidth = panelWidth * 0.8;
+	let inputHeight = unit * 0.6;
+	let inputX = panelX + (panelWidth - inputWidth) / 2;
+	let inputY = contentY + unit * 1.4;
+
+	console.log("Calculated positions:", {
+		inputX,
+		inputY,
+		inputWidth,
+		inputHeight,
+	});
+
+	nameInput = createInput("");
+	nameInput.position(inputX, inputY);
+	nameInput.size(inputWidth, inputHeight);
+	nameInput.style("font-size", unit * 0.3 + "px");
+	nameInput.style("font-family", "VT323");
+	nameInput.style("background-color", "#2a2a3a");
+	nameInput.style("color", "#ffffff");
+	nameInput.style("border", "2px solid #FFD700");
+	nameInput.style("border-radius", "6px");
+	nameInput.style("padding", "6px");
+	nameInput.style("text-align", "center");
+	nameInput.style("box-sizing", "border-box");
+	nameInput.attribute("placeholder", "🎮 Enter your name");
+	nameInput.attribute("maxlength", "20");
+
+	console.log("Created input element");
+
+	// Input focus styling
+	nameInput.elt.addEventListener("focus", () => {
+		nameInput.style("border-color", "#FFD700");
+		nameInput.style("box-shadow", "0 0 10px rgba(255, 215, 0, 0.5)");
+	});
+
+	nameInput.elt.addEventListener("blur", () => {
+		nameInput.style("border-color", "#555");
+		nameInput.style("box-shadow", "none");
+	});
+
+	// Submit button positioning
+	let buttonY = inputY + inputHeight + unit * 0.4;
+
+	submitButton = createButton("🚀 SUBMIT SCORE");
+	submitButton.position(inputX, buttonY);
+	submitButton.size(inputWidth, inputHeight);
+	submitButton.style("font-size", unit * 0.3 + "px");
+	submitButton.style("font-family", "VT323");
+	submitButton.style("background", "linear-gradient(45deg, #FF2D2D, #FF6B6B)");
+	submitButton.style("color", "white");
+	submitButton.style("border", "none");
+	submitButton.style("border-radius", "6px");
+	submitButton.style("cursor", "pointer");
+	submitButton.style("transition", "all 0.2s ease");
+	submitButton.style("font-weight", "bold");
+	submitButton.style("text-transform", "uppercase");
+	submitButton.style("box-sizing", "border-box");
+
+	console.log("Created submit button");
+
+	// Button hover effects
+	submitButton.elt.addEventListener("mouseenter", () => {
+		submitButton.style("transform", "translateY(-1px)");
+		submitButton.style("box-shadow", "0 3px 12px rgba(255, 45, 45, 0.3)");
+		submitButton.style(
+			"background",
+			"linear-gradient(45deg, #FF1D1D, #FF5B5B)"
+		);
+	});
+
+	submitButton.elt.addEventListener("mouseleave", () => {
+		submitButton.style("transform", "translateY(0px)");
+		submitButton.style("box-shadow", "none");
+		submitButton.style(
+			"background",
+			"linear-gradient(45deg, #FF2D2D, #FF6B6B)"
+		);
+	});
+
+	submitButton.mousePressed(async () => {
+		let name = nameInput.value().trim();
+		if (name.length > 0) {
+			// Disable button during submission
+			submitButton.html("⏳ SUBMITTING...");
+			submitButton.style("background", "linear-gradient(45deg, #666, #888)");
+			submitButton.elt.disabled = true;
+
+			let success = await submitScore(name, lastGameDuration);
+			if (success) {
+				scoreSubmitted = true;
+				playerName = name;
+				// Reload leaderboard to show updated rankings
+				loadLeaderboard();
+				// Remove input elements
+				cleanupInputElements();
+
+				// Play success sound if available
+				if (clickSound) clickSound.play();
+			} else {
+				// Re-enable button on failure
+				submitButton.html("🚀 SUBMIT SCORE");
+				submitButton.style(
+					"background",
+					"linear-gradient(45deg, #FF2D2D, #FF6B6B)"
+				);
+				submitButton.elt.disabled = false;
+			}
+		}
+	});
+}
+
+function drawRestartPrompt() {
+	// Animated restart button at bottom
+	let buttonY = height - unit * 0.8;
+	let buttonWidth = unit * 5;
+	let buttonHeight = unit * 0.6;
+	let buttonX = width / 2;
+
+	// Pulsing animation
+	let pulse = 1 + 0.03 * sin(millis() * 0.008);
+	let alpha = 180 + 75 * sin(millis() * 0.006);
+
+	// Button background
+	fill(50, 50, 80, 220);
+	stroke(255, 255, 255, alpha);
+	strokeWeight(2);
+	rect(
+		buttonX - (buttonWidth / 2) * pulse,
+		buttonY - (buttonHeight / 2) * pulse,
+		buttonWidth * pulse,
+		buttonHeight * pulse,
+		unit * 0.15
+	);
+
+	// Button text
+	noStroke();
+	textAlign(CENTER, CENTER);
+	textSize(unit * 0.35 * pulse);
+	fill(255, 255, 255, alpha);
+	text("PRESS ENTER TO PLAY AGAIN", buttonX, buttonY);
+}
+
 function draw() {
+	// Only clean up input elements when transitioning away from victory screen
+	// or when explicitly on a different screen state
+	let shouldShowInputs =
+		currentScreen === "gameOver" && gameResult === "victory" && !scoreSubmitted;
+
+	if (!shouldShowInputs && (nameInput || submitButton)) {
+		console.log(
+			"Cleaning up input elements - not on victory screen or score submitted"
+		);
+		cleanupInputElements();
+	}
+
 	if (isTransitioning) {
 		handleTransition();
 	} else {
@@ -686,13 +1157,26 @@ function drawWelcome() {
 	fill(0, 0, 0, 120);
 	rect(0, 0, width, height);
 
+	// Draw William.png (iMonster)
+	if (iMonster) {
+		let monsterWidth = unit * 4;
+		let monsterHeight = monsterWidth * (iMonster.height / iMonster.width);
+		image(
+			iMonster,
+			width / 2 - monsterWidth / 2,
+			height / 2 - monsterHeight,
+			monsterWidth,
+			monsterHeight
+		);
+	}
+
 	// Main title
 	fill(255);
 	textAlign(CENTER, CENTER);
 	textSize(unit * 1.5);
 	stroke(0);
 	strokeWeight(unit * 0.08);
-	text("ADDCHAI GAME", width / 2, height / 2 - unit * 1.5);
+	text("Beat Bad Ideas", width / 2, height / 2 + unit * 0.8);
 	noStroke();
 
 	// Subtitle/instruction
@@ -700,13 +1184,13 @@ function drawWelcome() {
 	fill(255, 255, 0);
 	stroke(0);
 	strokeWeight(unit * 0.05);
-	text("Click to Start", width / 2, height / 2);
+	text("Click to Start", width / 2, height / 2 + unit * 1.9);
 	noStroke();
 
 	// Additional info
 	textSize(unit * 0.4);
 	fill(200, 200, 200);
-	text("Audio and video will be enabled", width / 2, height / 2 + unit);
+	// text("Audio and video will be enabled", width / 2, height / 2 + unit);
 
 	// Pulsing effect for "Click to Start"
 	let pulseAlpha = 150 + 105 * sin(millis() * 0.005);
@@ -835,12 +1319,6 @@ function keyPressed() {
 		startTransition("game");
 	} else if (currentScreen === "gameOver" && !isTransitioning) {
 		if (keyCode === ENTER) {
-			// Stop victory video if it's playing
-			if (victoryVideo && !victoryVideo.elt.paused) {
-				victoryVideo.stop();
-				console.log("Stopped victory video");
-			}
-
 			// Reset core game play elements for a new game
 			p.health = 3;
 			m.health = 10;
@@ -914,6 +1392,9 @@ function windowResized() {
 
 	screenBackBufferInitialized = updateScreenBackBuffer(); // Update static background buffer on resize
 	cloudsBufferInitialized = updateCloudsBuffer(); // Update clouds buffer on resize
+
+	// Clean up input elements on resize to avoid positioning issues
+	cleanupInputElements();
 }
 
 function drawGame() {
@@ -1392,73 +1873,62 @@ function drawGameOver() {
 	noStroke(); // Prevent outlines
 
 	if (gameResult === "victory") {
-		// Victory screen with video background
+		// Victory screen with static background and moving clouds
 		background(0);
 
-		if (victoryVideo && victoryVideoLoaded) {
-			// Start playing the victory video if it hasn't started yet
-			if (victoryVideo.elt.paused) {
-				try {
-					victoryVideo.play();
-					console.log("Starting victory video");
-				} catch (error) {
-					console.log("Victory video autoplay failed:", error);
-				}
-			}
+		// Attempt to initialize static screen background buffer if not already done
+		if (!screenBackBufferInitialized) {
+			screenBackBufferInitialized = updateScreenBackBuffer();
+		}
 
-			// Calculate dimensions to maintain aspect ratio and center the video
-			let videoAspectRatio = victoryVideo.width / victoryVideo.height;
-			let canvasAspectRatio = width / height;
-			let drawWidth, drawHeight, x, y;
+		// Draw static background
+		if (gScreenBack) {
+			image(gScreenBack, 0, 0);
+		}
 
-			if (videoAspectRatio > canvasAspectRatio) {
-				// Video is wider than canvas, fit by width
-				drawWidth = width;
-				drawHeight = width / videoAspectRatio;
-				x = 0;
-				y = (height - drawHeight) / 2;
-			} else {
-				// Video is taller than canvas, fit by height
-				drawHeight = height;
-				drawWidth = height * videoAspectRatio;
-				x = (width - drawWidth) / 2;
-				y = 0;
-			}
+		// Draw animated clouds
+		drawClouds();
 
-			// Draw the victory video as background
-			image(victoryVideo, x, y, drawWidth, drawHeight);
-		} else {
-			// Fallback to static background if video not loaded
-			if (!screenBackBufferInitialized) {
-				screenBackBufferInitialized = updateScreenBackBuffer();
-			}
-			if (gScreenBack) {
-				image(gScreenBack, 0, 0);
-			}
-			drawClouds();
+		// Load leaderboard on first time seeing victory screen
+		if (!leaderboardLoaded && !isLoadingLeaderboard) {
+			loadLeaderboard();
 		}
 
 		// Draw semi-transparent overlay for better text visibility
-		// fill(0, 0, 0, 150);
-		// rect(width / 2 - unit * 4, height / 2 - unit * 2.5, unit * 8, unit * 4);
+		fill(0, 0, 0, 180);
+		rect(0, 0, width, height);
 
-		// Draw victory text and score in center with strong outline for visibility
-		textAlign(CENTER, CENTER);
+		// Victory title with glow effect
+		drawGlowText(
+			"VICTORY!",
+			width / 2,
+			unit * 0.6,
+			unit * 1,
+			color(255, 215, 0),
+			color(255, 255, 0)
+		);
 
-		let seconds = floor(lastGameDuration / 1000);
-		let minutes = floor(seconds / 60);
-		let displaySeconds = seconds % 60;
-		let timeStr = nf(minutes, 2) + ":" + nf(displaySeconds, 2);
+		// Your time with highlighted background
+		let timeStr = formatTime(lastGameDuration);
+		drawTimeDisplay(timeStr, width / 2, unit * 1.8);
 
-		// Victory title
-		textSize(unit * 1);
-		stroke(0);
-		strokeWeight(unit * 0.2);
-		fill(255, 255, 0);
-		text("Time: " + timeStr, width / 2, unit * 0.5);
-		noStroke();
+		// Main content area with two panels
+		let panelY = unit * 2.6;
+		let panelHeight = height - panelY - unit * 1.4; // Leave space at bottom
+		let panelWidth = (width - unit * 3) / 2; // Two panels with a gap
+		let leftPanelX = unit;
+		let rightPanelX = width / 2 + unit * 0.5;
+
+		// Left Panel - Leaderboard
+		drawLeaderboardPanel(leftPanelX, panelY, panelWidth, panelHeight);
+
+		// Right Panel - Score Submission (includes input elements)
+		drawSubmissionPanel(rightPanelX, panelY, panelWidth, panelHeight);
 	} else {
 		// Defeat screen with static background
+		// Ensure input elements are cleaned up for defeat screen
+		cleanupInputElements();
+
 		background(0);
 
 		// Attempt to initialize static screen background buffer if not already done
@@ -1524,12 +1994,7 @@ function drawGameOver() {
 	}
 
 	// Draw restart instruction at bottom with outline (for both victory and defeat)
-	textSize(unit * 0.5);
-	stroke(0);
-	strokeWeight(unit * 0.05);
-	fill(255);
-	text("Press ENTER to restart", width / 2, height - unit);
-	noStroke();
+	drawRestartPrompt();
 }
 
 function handleTransition() {
@@ -1609,6 +2074,11 @@ function handleTransition() {
 			gameEndTime = 0;
 			lastGameDuration = 0;
 
+			// Reset leaderboard state for new game
+			scoreSubmitted = false;
+			playerName = "";
+			cleanupInputElements();
+
 			// If we came from character select path, also reset health and arrays
 			if (
 				screenWeCameFrom === "characterSelect" ||
@@ -1641,6 +2111,15 @@ function startTransition(newScreen) {
 	if (clickSound) clickSound.play(); // Play click sound on transition start
 
 	// Clean up input elements if they exist
+	cleanupInputElements();
+
+	isTransitioning = true;
+	targetScreen = newScreen;
+	fadeAlpha = 0;
+	FADE_SPEED = Math.abs(FADE_SPEED);
+}
+
+function cleanupInputElements() {
 	if (nameInput) {
 		nameInput.remove();
 		nameInput = null;
@@ -1649,11 +2128,6 @@ function startTransition(newScreen) {
 		submitButton.remove();
 		submitButton = null;
 	}
-
-	isTransitioning = true;
-	targetScreen = newScreen;
-	fadeAlpha = 0;
-	FADE_SPEED = Math.abs(FADE_SPEED);
 }
 
 // Helper function to draw animated clouds
