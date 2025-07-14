@@ -184,21 +184,7 @@ function preload() {
 
 	// Load all images
 	iMonster = loadImage("asset/William.png");
-	// iPlayer = loadImage("asset/Playerr.png"); // Not used
 	iFlame = loadImage("asset/Blastt.png");
-	// iWeapon = loadImage("asset/Weaponn.png"); // Not used
-	// iAddChai1 = loadImage("asset/map/addchai1.png", () =>
-	// 	console.log("addchai1 loaded")
-	// );
-	// iAddChai2 = loadImage("asset/map/addchai2.png", () =>
-	// 	console.log("addchai2 loaded")
-	// );
-	// iAddChai3 = loadImage("asset/map/addchai3.png", () =>
-	// 	console.log("addchai3 loaded")
-	// );
-	// iAddChai4 = loadImage("asset/map/addchai4.png", () =>
-	// 	console.log("addchai4 loaded")
-	// );
 	characterSheet = loadImage("asset/character/Character Sheet_final.png");
 	lifeIcon = loadImage("asset/character/life.png"); // Add life icon loading
 	healthBarAbove = loadImage("asset/monster/health_above.png");
@@ -357,6 +343,12 @@ function setup() {
 			"Clouds buffer not initialized during setup. Will attempt in draw loops."
 		);
 	}
+
+	// In your game's main file, when everything is loaded:
+	// Send ready signal to parent window (for iframe embedding)
+	if (window.parent !== window) {
+		window.parent.postMessage("gameReady", "https://www.addchai.com"); // Specific domain for security
+	}
 }
 
 // Firebase helper functions
@@ -514,7 +506,7 @@ function drawLeaderboardPanel(x, y, w, h) {
 		textAlign(CENTER, CENTER);
 		textSize(unit * 0.4);
 		fill(150, 150, 255);
-		let dots = ".".repeat((millis() / 500) % 4);
+		let dots = ".".repeat((currentTime / 500) % 4);
 		text("Loading" + dots, x + w / 2, contentY + unit * 1.5);
 	} else if (leaderboardLoaded && leaderboardData.length > 0) {
 		// Leaderboard entries with proper spacing
@@ -703,8 +695,6 @@ function createStyledInputElements(panelX, contentY, panelWidth) {
 
 				// Reload leaderboard to show updated rankings
 				loadLeaderboard();
-				// Remove input elements
-				cleanupInputElements();
 
 				// Play success sound if available
 				if (clickSound) clickSound.play();
@@ -780,6 +770,8 @@ function drawRestartPrompt() {
 }
 
 function draw() {
+	let currentTime = millis(); // Cache millis() for this frame
+
 	// Only clean up input elements when transitioning away from victory screen
 	// or when explicitly on a different screen state
 	let shouldShowInputs =
