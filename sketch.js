@@ -1351,7 +1351,7 @@ function keyPressed() {
 		if (keyCode === ENTER) {
 			// Reset core game play elements for a new game
 			p.health = 3;
-			m.health = 10;
+			m.health = 1;
 
 			mFlameArray = [];
 			playerWeapons = [];
@@ -2120,7 +2120,7 @@ function handleTransition() {
 				screenWeCameFrom === "screen3"
 			) {
 				p.health = 3;
-				m.health = 10;
+				m.health = 1;
 				mFlameArray = [];
 				playerWeapons = [];
 				blastArray = [];
@@ -2529,7 +2529,7 @@ class Monster {
 		this.targetY = this.y;
 		// this.size = unit / 2; // Original size, less relevant now with ww/hh
 		this.direction = 1;
-		this.health = 10;
+		this.health = 1;
 
 		this.targetY = unit / 2;
 		this.ww = unit * 3;
