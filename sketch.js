@@ -178,6 +178,47 @@ let leaderboardData = [];
 let isLoadingLeaderboard = false;
 let leaderboardLoaded = false;
 
+async function initializeFirebase() {
+	try {
+		// Dynamically import Firebase modules
+		const { initializeApp } = await import(
+			"https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js"
+		);
+		const { getFirestore, collection, addDoc, getDocs, query, orderBy, limit } =
+			await import(
+				"https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js"
+			);
+
+		// Your web app's Firebase configuration
+		const firebaseConfig = {
+			apiKey: "AIzaSyDcekKLVJ202ahAICGsaY_TF3W5dep3nzw",
+			authDomain: "bad-idea-game.firebaseapp.com",
+			projectId: "bad-idea-game",
+			storageBucket: "bad-idea-game.firebasestorage.app",
+			messagingSenderId: "576916916036",
+			appId: "1:576916916036:web:0c6e440ac5913c03ddf911",
+		};
+
+		// Initialize Firebase
+		const app = initializeApp(firebaseConfig);
+		const db = getFirestore(app);
+
+		// Make Firebase functions available globally
+		window.firebaseDB = db;
+		window.firebaseAddDoc = addDoc;
+		window.firebaseCollection = collection;
+		window.firebaseGetDocs = getDocs;
+		window.firebaseQuery = query;
+		window.firebaseOrderBy = orderBy;
+		window.firebaseLimit = limit;
+
+		console.log("Firebase initialized successfully from sketch.js");
+	} catch (error) {
+		console.error("Firebase initialization failed:", error);
+		// If Firebase fails, the game can still run in offline mode with sample data
+	}
+}
+
 function preload() {
 	// Preload any assets here if needed
 	console.log("Preload started");
@@ -263,7 +304,8 @@ function preload() {
 	});
 }
 
-function setup() {
+async function setup() {
+	await initializeFirebase(); // Initialize Firebase first
 	console.log("Setup started");
 
 	// Calculate canvas size to fit window while maintaining 16:9 aspect ratio
@@ -506,7 +548,7 @@ function drawLeaderboardPanel(x, y, w, h) {
 		textAlign(CENTER, CENTER);
 		textSize(unit * 0.4);
 		fill(150, 150, 255);
-		let dots = ".".repeat((currentTime / 500) % 4);
+		let dots = ".".repeat(floor((millis() / 500) % 4));
 		text("Loading" + dots, x + w / 2, contentY + unit * 1.5);
 	} else if (leaderboardLoaded && leaderboardData.length > 0) {
 		// Leaderboard entries with proper spacing
@@ -1309,7 +1351,8 @@ function keyPressed() {
 		if (keyCode === ENTER) {
 			// Reset core game play elements for a new game
 			p.health = 3;
-			m.health = 10;
+			m.health = 1;
+
 			mFlameArray = [];
 			playerWeapons = [];
 			blastArray = [];
@@ -2077,7 +2120,7 @@ function handleTransition() {
 				screenWeCameFrom === "screen3"
 			) {
 				p.health = 3;
-				m.health = 10;
+				m.health = 1;
 				mFlameArray = [];
 				playerWeapons = [];
 				blastArray = [];
@@ -2486,7 +2529,7 @@ class Monster {
 		this.targetY = this.y;
 		// this.size = unit / 2; // Original size, less relevant now with ww/hh
 		this.direction = 1;
-		this.health = 10;
+		this.health = 1;
 
 		this.targetY = unit / 2;
 		this.ww = unit * 3;
@@ -2768,8 +2811,15 @@ function updateScreenBackBuffer() {
 		return false;
 	}
 
-	// Create buffer if it doesn't exist
-	if (!gScreenBack) {
+	// Create buffer if it doesn't exist or if dimensions changed
+	if (
+		!gScreenBack ||
+		gScreenBack.width !== width ||
+		gScreenBack.height !== height
+	) {
+		if (gScreenBack) {
+			gScreenBack.remove();
+		}
 		gScreenBack = createGraphics(width, height);
 	}
 
