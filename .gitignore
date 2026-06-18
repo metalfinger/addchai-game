@@ -1,0 +1,6 @@
+.DS_Store
+**/.DS_Store
+
+# Raw/unoptimized video source files (use web-optimized versions instead)
+asset/video/*.mov
+asset/video/Final Edit 5 June 2026.mp4
